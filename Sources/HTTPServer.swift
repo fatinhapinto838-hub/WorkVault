@@ -101,7 +101,7 @@ final class HTTPConnection {
         guard headers["transfer-encoding"]==nil else{throw HTTPFailure(message:"需指定 Content-Length")}
         if let l=headers["content-length"] {guard let n=Int64(l), n>=0 else{throw HTTPFailure(message:"无效长度")};length=n}
         if method=="GET" && length != 0{throw HTTPFailure(message:"无效 GET")}
-        if path=="/health",method=="GET"{json(["status":"ok","version":"1.1.0"]);return}
+        if path=="/health",method=="GET"{json(["status":"ok","version":"1.2.0"]);return}
         if path=="/",method=="GET",query["token"]==server.token {
             send(status:303,headers:["Location":"/","Set-Cookie":"wv_session=\(server.token); HttpOnly; SameSite=Strict; Path=/"],data:Data());return
         }

@@ -85,3 +85,6 @@
 
 
 Schema 4 新增 `project_deliverables` 保存最终成果的项目/文件/固定版本、显示名、证据说明与时间。原文件实体不复制。旧 schema 1–3 可自动迁移；应用拒绝打开较新结构。
+
+
+Schema 5 在 project_deliverables 中新增 delivered_at（可空）和 time_source。selected_at 始终表示真实收录时间；交付时间缺失时排序回退至此字段，并明确显示。旧库迁移不猜测历史交付日期。

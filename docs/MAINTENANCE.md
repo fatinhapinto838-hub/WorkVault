@@ -16,3 +16,6 @@ Tests/integration.py 调用真实打包二进制并创建隔离测试库；Tests
 
 
 1.1.0 引入 schema 4 最终成果关系。编译时需包含 Sources/Deliverables.swift；新增 `Tests/deliverables.py` 和 `Tests/final-ui-smoke.mjs`。不要用 1.0.0 打开升级后的库。发布工具现在生成 1.1.0 源码包。
+
+
+1.2.0 引入 schema 5 时间排序及旧库迁移。新增 Tests/final-time-ui.mjs；后端 Tests/deliverables.py 增加交付/收录时间区分、分页排序、项目合并拆分日期保留与schema4迁移测试。

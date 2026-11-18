@@ -90,12 +90,52 @@ class Deliverables(unittest.TestCase):
    f=v.rpc('import',paths=[self.fixture('legacy original')],project_id=pid,confirmed=True)['results'][0]['file']
    v.rpc('file_update',ids=[f['id']],final=True)
   finally:v.close()
-  db=sqlite3.connect(root/'workvault.sqlite');db.execute('DROP TABLE project_deliverables');db.execute('DELETE FROM schema_migrations WHERE version=4');db.execute('PRAGMA user_version=3');db.commit();db.close()
+
+  db=sqlite3.connect(root/'workvault.sqlite');db.execute('DROP TABLE project_deliverables');db.execute('DELETE FROM schema_migrations WHERE version>=4');db.execute('PRAGMA user_version=3');db.commit();db.close()
   v.ready.unlink(missing_ok=True);v=Vault(root)
   try:
    item=v.rpc('deliverables',project_id=pid)['groups'][0]['items'][0]
    self.assertEqual(item['version_id'],f['current_version']);self.assertEqual(item['evidence_source'],'legacy_final')
    self.assertEqual(v.rpc('file_detail',id=f['id'])['file']['name'],f['name'])
+  finally:v.close()
+
+
+ def test_12_chronological_order_uses_delivery_not_import_order(self):
+  a=self.project('time older project');b=self.project('time newer project');empty=self.project('time empty project')
+  old=self.add(a);middle=self.add(a);new=self.add(b)
+  for pid,fs in [(b,[new]),(a,[middle,old])]:self.rpc('deliverable_set',project_id=pid,file_ids=[f['id'] for f in fs])
+  db=sqlite3.connect(self.v.root/'workvault.sqlite')
+  for f,date in [(old,'2025-10-01T00:00:00Z'),(middle,'2025-10-20T00:00:00Z'),(new,'2025-11-10T00:00:00Z')]:
+   db.execute("UPDATE project_deliverables SET delivered_at=?,time_source='task_delivery' WHERE file_id=?",(date,f['id']))
+  db.commit();db.close()
+  group=self.rpc('deliverables',q='time ',limit=50)['groups'];self.assertEqual([g['project']['id'] for g in group],[b,a,empty])
+  self.assertEqual([i['file_id'] for i in self.items(a)],[middle['id'],old['id']])
+  self.assertEqual(self.items(a)[0]['effective_at'],'2025-10-20T00:00:00Z')
+  self.assertEqual(group[0]['latest_time_source'],'task_delivery')
+  self.rpc('deliverable_set',project_id=a,file_ids=[middle['id']],evidence_note='note only')
+  self.assertEqual(self.items(a)[0]['delivered_at'],'2025-10-20T00:00:00Z')
+  self.rpc('version_add',id=middle['id'],path=self.fixture('new working version'))
+  self.rpc('deliverable_set',project_id=a,file_ids=[middle['id']],delivered_at='2099-01-01T00:00:00Z',time_source='task_delivery')
+  item=self.items(a)[0];self.assertIsNone(item.get('delivered_at'));self.assertEqual(item['time_source'],'collection')
+  self.assertEqual(item['effective_at'],item['selected_at'])
+  self.rpc('project_merge',from_id=b,to_id=a)
+  merged={i['file_id']:i for i in self.items(a)};self.assertEqual(merged[new['id']]['delivered_at'],'2025-11-10T00:00:00Z')
+  split=self.rpc('project_split',id=a,title='time split',file_ids=[new['id']])['project']['id']
+  self.assertEqual(self.items(split)[0]['delivered_at'],'2025-11-10T00:00:00Z')
+
+ def test_13_schema4_collection_time_migrates_without_inventing_delivery(self):
+  root=self.base/'schema4';v=Vault(root)
+  try:
+   pid=v.rpc('project_save',title='schema4 fixture')['project']['id']
+   f=v.rpc('import',paths=[self.fixture('schema4 fixture')],project_id=pid,confirmed=True)['results'][0]['file']
+   v.rpc('deliverable_set',project_id=pid,file_ids=[f['id']])
+   selected=v.rpc('deliverables',project_id=pid)['groups'][0]['items'][0]['selected_at']
+  finally:v.close()
+  db=sqlite3.connect(root/'workvault.sqlite');db.execute('DROP INDEX deliverables_time');db.execute('ALTER TABLE project_deliverables DROP COLUMN delivered_at');db.execute('ALTER TABLE project_deliverables DROP COLUMN time_source');db.execute('DELETE FROM schema_migrations WHERE version=5');db.execute('PRAGMA user_version=4');db.commit();db.close()
+  v.ready.unlink(missing_ok=True);v=Vault(root)
+  try:
+   item=v.rpc('deliverables',project_id=pid)['groups'][0]['items'][0]
+   self.assertIsNone(item.get('delivered_at'));self.assertEqual(item['selected_at'],selected);self.assertEqual(item['effective_at'],selected);self.assertEqual(item['time_source'],'collection')
   finally:v.close()
 
 if __name__=='__main__':unittest.main(verbosity=2)
