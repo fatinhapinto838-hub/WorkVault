@@ -59,4 +59,4 @@ scripts/build.sh
 - [v1.2.6](https://github.com/fatinhapinto838-hub/WorkVault/releases/tag/v1.2.6) · 文件中心新增搜索排除设置，可添加或移除文件后缀。
 - [v1.3.0](https://github.com/fatinhapinto838-hub/WorkVault/releases/tag/v1.3.0) · 新增 Codex 成果目录接收。监控日期与任务下的 outputs，新增或更新的文件进入待确认收件箱。
 
-1.2.4、1.2.5 和 1.2.6 的历史快照保留了可验证的原始网页资源和应用构建。完整源码见其他版本标签。TypeScript 依赖保留上游许可证。
+WorkVault 1.2.4、1.2.5、1.2.6 的完整源码已依据当时的编辑记录恢复，并通过原版可执行文件和网页资源校验。请从各版本发布页下载带 SHA-256 校验文件的恢复源码 ZIP：[1.2.4](https://github.com/fatinhapinto838-hub/WorkVault/releases/tag/v1.2.4)、[1.2.5](https://github.com/fatinhapinto838-hub/WorkVault/releases/tag/v1.2.5)、[1.2.6](https://github.com/fatinhapinto838-hub/WorkVault/releases/tag/v1.2.6)。历史标签保留原有快照。TypeScript 依赖保留上游许可证。
