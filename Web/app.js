@@ -1,0 +1,712 @@
+const $ = (s, root = document) => root.querySelector(s);
+const $$ = (s, root = document) => Array.from(root.querySelectorAll(s));
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const attr = esc;
+const paths = { home: 'M3 10 12 3l9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z', folder: 'M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', files: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M8 13h8 M8 17h6', inbox: 'm3 12 3-8h12l3 8v8H3z M3 12h5l2 3h4l2-3h5', spark: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5z M20 2v4 M18 4h4', sync: 'M20 7v5h-5 M4 17v-5h5 M6 7a7 7 0 0 1 12-2l2 3 M4 16l2 3a7 7 0 0 0 12-2', settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8 M10 2h4l1 3 3 1 3-1 2 4-2 2v3l2 2-2 4-3-1-3 1-1 3h-4l-1-3-3-1-3 1-2-4 2-2v-3L1 9l2-4 3 1 3-1z', search: 'M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0', plus: 'M12 5v14 M5 12h14', upload: 'M12 16V3 M7 8l5-5 5 5 M4 16v5h16v-5', download: 'M12 3v13 M7 11l5 5 5-5 M4 17v4h16v-4', chevron: 'm9 5 7 7-7 7', close: 'm6 6 12 12 M18 6 6 18', grid: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z', list: 'M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01', star: 'm12 3 2.8 5.8 6.4.9-4.6 4.5 1.1 6.4-5.7-3-5.7 3 1.1-6.4L2.8 9.7l6.4-.9z', trash: 'M3 6h18 M9 6V3h6v3 M5 6l1 15h12l1-15 M10 10v7 M14 10v7', clock: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M12 7v5l3 2', check: 'm5 12 4 4L19 6', external: 'M14 3h7v7 M21 3 10 14 M11 3H3v18h18v-8', info: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M12 11v6 M12 7h.01', disk: 'M3 15l3-10h12l3 10v5H3z M3 15h18 M16 18h2', shield: 'm12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z m-4 9 3 3 5-6', sun: 'M12 3v1 M12 20v1 M3 12h1 M20 12h1 M5 5l1 1 M18 18l1 1 M5 19l1-1 M18 6l1-1 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0', more: 'M5 12h.01 M12 12h.01 M19 12h.01', edit: 'm16 3 5 5-13 13H3v-5z M14 5l5 5', tag: 'M3 3h8l10 10-8 8L3 11z M7 7h.01', arrow: 'M19 12H5 m6-6-6 6 6 6', pause: 'M8 5v14 M16 5v14', play: 'm7 3 14 9-14 9z', link: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-2 2 M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l2-2', power: 'M12 2v10 M6 5a9 9 0 1 0 12 0', lock: 'M5 10h14v11H5z M8 10V6a4 4 0 0 1 8 0v4', refresh: 'M20 6v6h-6 M20 12a8 8 0 1 0-2 6', book: 'M3 3h6a4 4 0 0 1 3 2 4 4 0 0 1 3-2h6v17h-6a4 4 0 0 0-3 2 4 4 0 0 0-3-2H3z M12 5v17' };
+const icon = (n) => `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[n] || paths.files}"/></svg>`;
+const btn = (text, action, i = '', cls = '') => `<button class="${cls}" data-action="${attr(action)}">${i ? icon(i) : ''}${esc(text)}</button>`;
+const bytes = (n) => { const v = Number(n) || 0; if (v < 1024)
+    return v + ' B'; const k = Math.min(Math.floor(Math.log(v) / Math.log(1024)), 4); return (v / 1024 ** k).toFixed(k > 1 ? 1 : 0) + ' ' + ['B', 'KB', 'MB', 'GB', 'TB'][k]; };
+const time = (s, short = false) => { if (!s)
+    return '尚未记录'; const d = new Date(String(s)); return isNaN(d.getTime()) ? String(s) : short ? d.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }) : d.toLocaleString('zh-CN', { hour12: false }); };
+const array = (v) => Array.isArray(v) ? v : typeof v === 'string' && v.startsWith('[') ? (() => { try {
+    return JSON.parse(v);
+}
+catch {
+    return [];
+} })() : [];
+const tagText = (v) => array(v).join(', ');
+const friendlyStatus = (s) => ({ active: '进行中', completed: '已完成', archived: '已归档', managed: '已归档', pending: '待确认', trash: '回收站', in_progress: '进行中' }[String(s)] || String(s || '进行中'));
+const sourceLabel = (s) => ({ manual: '手动导入', downloads: '下载目录', dedicated: '专用收件箱', history: '官方导出', export: '官方导出', official_export: '官方导出', manual_link: '用户提供链接', user: '用户输入', manual_upload: '浏览器上传', upload: '浏览器上传', manifest: '用户提供任务清单' }[String(s)] || String(s || '未知来源'));
+let pendingConfirmation = null;
+let page = 'dashboard', status = {}, projects = [], categories = [], files = [], total = 0, offset = 0, listMode = localStorage.getItem('wv-list') || 'list', selected = new Set();
+let projectListMode = localStorage.getItem('wv-project-list') || 'grid';
+let filter = { q: '', ext: '', project_id: '', sort: 'newest', favorite: false }, projectID = '', renderSerial = 0, onboardStep = 0, setupData = {}, currentImport = null, activeJob = null, contextNode = null;
+const nav = [['dashboard', 'home', '首页概览'], ['projects', 'folder', '项目中心'], ['files', 'files', '文件中心'], ['inbox', 'inbox', '待确认收件箱'], ['ai', 'spark', 'AI 知识中心'], ['sources', 'sync', '同步中心'], ['settings', 'settings', '设置中心'], ['trash', 'trash', '回收站']];
+async function rpc(action, data = {}) { const r = await fetch('/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, ...data }) }); let out; try {
+    out = await r.json();
+}
+catch {
+    throw new Error('本地服务返回异常，请重新启动 WorkVault。');
+} if (!r.ok || out.error)
+    throw new Error(out.error || `请求失败 (${r.status})`); return out; }
+function toast(message, error = false) { const node = document.createElement('div'); node.className = 'toast' + (error ? ' error' : ''); node.textContent = message; $('#toasts').append(node); setTimeout(() => node.remove(), error ? 9000 : 5000); }
+function fail(e) { toast(e instanceof Error ? e.message : String(e), true); }
+function modal(title, body, footer = '', wide = false) { $('#modal-root').innerHTML = `<div class="modalback"><section class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${attr(title)}"><header class="modalhead"><h2>${esc(title)}</h2><button class="close" data-action="close" aria-label="关闭">${icon('close')}</button></header><div class="modalbody">${body}</div>${footer ? `<footer class="modalfoot">${footer}</footer>` : ''}</section></div>`; bindActions($('#modal-root')); setTimeout(() => $('input:not([type=checkbox]),textarea,select', $('#modal-root'))?.focus(), 50); }
+function closeModal() { const finish = pendingConfirmation; pendingConfirmation = null; $('#modal-root').innerHTML = ''; finish?.(false); }
+async function confirmDialog(title, message, label = '确认') { return new Promise(resolve => { modal(title, `<p>${esc(message)}</p>`, btn('取消', 'close') + btn(label, 'confirm', '', 'primary')); pendingConfirmation = resolve; $('[data-action=confirm]', $('#modal-root')).onclick = () => { pendingConfirmation = null; closeModal(); resolve(true); }; }); }
+function field(name, label, value = '', type = 'text', help = '') { return `<div class="field"><label for="f-${attr(name)}">${esc(label)}</label><input id="f-${attr(name)}" name="${attr(name)}" type="${attr(type)}" value="${attr(value)}">${help ? `<small>${esc(help)}</small>` : ''}</div>`; }
+function selectField(name, label, options, value = '', help = '') { return `<div class="field"><label for="f-${attr(name)}">${esc(label)}</label><select id="f-${attr(name)}" name="${attr(name)}">${options.map(([v, l]) => `<option value="${attr(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>${help ? `<small>${esc(help)}</small>` : ''}</div>`; }
+function projectOptions(blank = '不关联项目 · 进入待确认收件箱') { return [['', blank], ...projects.map(p => [String(p.id), String(p.title)])]; }
+function formValues(root = $('#modal-root')) { const out = {}; $$('[name]', root).forEach(n => { out[n.name] = n instanceof HTMLInputElement && n.type === 'checkbox' ? n.checked : n.value; }); return out; }
+function empty(title, description, action = '', actionText = '导入文件', i = 'files') { return `<div class="empty"><div class="emptyicon">${icon(i)}</div><h3>${esc(title)}</h3><p>${esc(description)}</p>${action ? btn(actionText, action, 'plus', 'primary') : ''}</div>`; }
+function fileIcon(f) { return `<div class="fileicon ${attr(f.ext || '')}">${esc(String(f.ext || 'FILE').toUpperCase().slice(0, 5))}</div>`; }
+function projectName(ids) { return array(ids).map(id => projects.find(p => p.id === id)?.title).filter(Boolean).join('、') || '未关联项目'; }
+function fileRows(items, check = false) { return `<div class="tablewrap"><table><thead><tr>${check ? '<th style="width:32px"><input type="checkbox" id="select-all" aria-label="选择本页全部文件"></th>' : ''}<th>文件名称</th><th>所属项目</th><th>文件大小</th><th>最近更新</th><th>状态</th><th></th></tr></thead><tbody>${items.map(f => `<tr data-file="${attr(f.id)}" class="${selected.has(f.id) ? 'selected' : ''}">${check ? `<td><input type="checkbox" data-select="${attr(f.id)}" ${selected.has(f.id) ? 'checked' : ''} aria-label="选择 ${attr(f.name)}"></td>` : ''}<td><a href="#" data-detail="${attr(f.id)}" class="filename">${fileIcon(f)}<span><span class="name">${esc(f.name)}</span><small>${esc(sourceLabel(f.source))}${f.final ? ' · 最终成果' : ''}${f.favorite ? ' · ★' : ''}</small></span></a></td><td class="muted">${esc(projectName(f.project_ids))}</td><td class="muted">${bytes(f.size)}</td><td class="muted">${time(f.updated_at || f.created_at, true)}</td><td><span class="badge ${f.status === 'pending' ? 'amber' : f.status === 'trash' ? 'gray' : 'green'}">${friendlyStatus(f.status)}</span></td><td><div class="rowactions"><button data-open="${attr(f.id)}" title="默认应用打开">${icon('external')}</button><button data-context="${attr(f.id)}" title="更多操作">${icon('more')}</button></div></td></tr>`).join('')}</tbody></table></div>`; }
+function fileGrid(items) { return `<div class="filegrid">${items.map(f => `<div class="filecard ${selected.has(f.id) ? 'selected' : ''}" data-detail="${attr(f.id)}" data-file="${attr(f.id)}"><input type="checkbox" data-select="${attr(f.id)}" ${selected.has(f.id) ? 'checked' : ''} aria-label="选择 ${attr(f.name)}"><div class="thumb">${['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.ext) ? `<img src="/content/${encodeURIComponent(f.id)}" loading="lazy" alt="${attr(f.name)}">` : fileIcon(f)}</div><div class="name">${esc(f.name)}</div><small>${bytes(f.size)} · ${time(f.updated_at || f.created_at, true)}</small></div>`).join('')}</div>`; }
+function shell() { $('#app').innerHTML = `<div class="shell"><aside class="sidebar"><div class="brand"><div class="brandmark">W</div><div class="brandtext">WorkVault<small>LOCAL WORKSPACE</small></div></div><div class="navlabel">工作空间</div><nav class="nav">${nav.slice(0, 6).map(([id, i, label]) => `<button data-page="${id}" class="${page === id ? 'active' : ''}">${icon(i)}<span>${label}</span>${id === 'inbox' && status.inbox ? `<b class="pill">${status.inbox}</b>` : ''}</button>`).join('')}</nav><div class="sidebarbottom"><div class="navlabel">管理</div><nav class="nav">${nav.slice(6).map(([id, i, label]) => `<button data-page="${id}" class="${page === id ? 'active' : ''}">${icon(i)}<span>${label}</span></button>`).join('')}</nav><div class="localstatus"><span class="dot"></span><strong style="font-size:11px">${status.storage_available === false ? '存储不可用' : '本地文件库已连接'}</strong><p>文件保存在此 Mac<br>AI 分析由你主动开启</p><div class="storagebar"><i style="width:${Math.min(100, Math.max(1, 100 * (Number(status.bytes) || 0) / Math.max(1, Number(status.free_bytes) || 1)))}%"></i></div></div></div></aside><main class="main"><header class="topbar"><div class="crumb">工作空间 <span style="margin-left:7px">/</span><strong>${nav.find(x => x[0] === page)?.[2] || '项目详情'}</strong></div><div class="globalsearch">${icon('search')}<input id="global-search" placeholder="搜索文件、项目与成果…" aria-label="全局搜索"><span class="shortcut">⌘ K</span></div><button class="ghost small" data-action="theme" title="切换深色/浅色">${icon('sun')}</button><div class="avatar" title="本地个人工作空间">WV</div></header><div id="content" class="content"></div></main></div>`; bindActions($('#app')); $$('[data-page]').forEach(n => n.onclick = () => go(n.dataset.page)); $('#global-search').addEventListener('keydown', (e) => { if (e.key === 'Enter') {
+    filter.q = ($('#global-search')).value;
+    offset = 0;
+    go('files');
+} }); }
+async function go(next) { page = next; selected.clear(); if (next !== 'project')
+    projectID = ''; await render(); }
+async function refreshMeta() { const r = await Promise.all([rpc('status'), rpc('projects'), rpc('categories')]); status = r[0]; projects = array(r[1].items); categories = array(r[2].items); }
+async function render() { selected.clear(); const serial = ++renderSerial; try {
+    await refreshMeta();
+    if (serial !== renderSerial)
+        return;
+    if (!status.setup_complete) {
+        renderOnboarding();
+        return;
+    }
+    shell();
+    $('#content').innerHTML = '<div class="loading"><span class="spinner"></span></div>';
+    let html = '';
+    switch (page) {
+        case 'dashboard':
+            html = dashboard();
+            break;
+        case 'projects':
+            html = projectsPage();
+            break;
+        case 'project':
+            html = await projectPage();
+            break;
+        case 'files':
+        case 'inbox':
+        case 'trash':
+            html = await filesPage();
+            break;
+        case 'sources':
+            html = await sourcesPage();
+            break;
+        case 'settings':
+            html = await settingsPage();
+            break;
+        case 'ai':
+            html = await aiPage();
+            break;
+    }
+    if (serial !== renderSerial)
+        return;
+    $('#content').innerHTML = html;
+    bindPage();
+}
+catch (e) {
+    fail(e);
+    if ($('#content'))
+        $('#content').innerHTML = empty('本地服务暂时不可用', '请检查文件库位置与应用运行状态，然后点击重试。', 'reload', '重新连接', 'info');
+} }
+function dashboard() { const recent = array(status.recent_files), formats = array(status.formats), max = Math.max(1, ...formats.map(f => Number(f.count))); return `<div class="pagehead"><div><h1>你的成果，井然有序。</h1><p>${new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })} · 让每一次 Work 都沉淀为可用的知识</p></div><div class="actions">${btn('新建项目', 'new-project', 'plus')}${btn('导入文件', 'import', 'upload', 'primary')}</div></div>${status.storage_available === false ? '<div class="notice warning">存储位置当前不可用。请重新连接外置磁盘，系统不会将离线文件视为已删除。</div>' : ''}<div class="stats">${stat('Work 项目', status.projects || 0, '已建立的本地项目', 'folder')}${stat('已管理文件', status.files || 0, '数据来自本地文件库', 'files')}${stat('档案存储', bytes(status.bytes), `本机剩余 ${bytes(status.free_bytes)}`, 'disk')}${stat('待确认文件', status.inbox || 0, '等待你确认来源与归属', 'inbox')}</div><div class="quickactions">${quick('导入成果文件', 'import', 'upload')}${quick('新建 Work 项目', 'new-project', 'folder')}${quick('查看待确认收件箱', 'goto-inbox', 'inbox')}${quick('创建手动备份', 'backup', 'shield')}</div><div class="twocol"><div><section class="section"><div class="sectionhead"><h2>最近新增文件</h2><a href="#" data-page="files">查看全部 →</a></div>${recent.length ? fileRows(recent.slice(0, 6)) : empty('开始收集你的第一份成果', '导入 ChatGPT Work 生成的报告、表格和研究资料，把分散的成果汇聚在一起。', 'import')}</section><section class="section"><div class="sectionhead"><h2>最近完成的项目</h2><a href="#" data-page="projects">项目中心 →</a></div>${projects.filter(p => ['completed', 'archived', '已完成', '已归档'].includes(p.status)).slice(0, 3).map(p => `<div class="activity"><div class="circle">${icon('check')}</div><div><a href="#" data-project="${attr(p.id)}">${esc(p.title)}</a><p class="muted">${p.file_count || 0} 份文件 · ${time(p.updated_at, true)}</p></div></div>`).join('') || '<p class="chartempty">完成项目后，将在这里汇总成果。</p>'}</section></div><div><section class="section"><div class="sectionhead"><h2>文件格式分布</h2><span class="badge gray">本地统计</span></div>${formats.length ? formats.slice(0, 7).map((f, i) => `<div class="chartline"><span>${esc(f.ext || '其他')}</span><div class="bar"><i style="width:${100 * Number(f.count) / max}%;background:${['#527af2', '#59b5a2', '#9d89d2', '#e8b870', '#7e9dbf'][i % 5]}"></i></div><span>${f.count}</span></div>`).join('') : '<p class="chartempty">导入文件后显示格式分布</p>'}</section><section class="section"><div class="sectionhead"><h2>最近接收活动</h2>${icon('clock')}</div>${activity(array(status.logs).slice(0, 5))}<div class="divider"></div><p class="footnote">接收记录反映本地扫描与导入。当前未连接 ChatGPT 个人账户同步接口。</p></section></div></div>`; }
+function stat(label, n, note, i) { return `<div class="stat"><div class="stathead"><span>${label}</span>${icon(i)}</div><div class="number">${esc(n)}</div><small>${esc(note)}</small></div>`; }
+function quick(label, a, i) { return `<button data-action="${a}"><span class="quickicon">${icon(i)}</span>${label}${icon('chevron')}</button>`; }
+function activity(items) { return items.length ? items.map(l => `<div class="activity"><div class="circle">${icon(l.status === 'failed' ? 'info' : 'check')}</div><div><p>${esc(l.message || l.action || l.event || l.status || '本地操作')}</p><small>${time(l.created_at || l.time)}${l.error ? ' · ' + esc(l.error) : ''}</small></div></div>`).join('') : '<p class="chartempty">还没有接收活动</p>'; }
+function projectsPage() { return `<div class="pagehead"><div><h1>项目中心</h1><p>以真实任务为线索，组织每一份研究成果</p></div>${btn('新建项目', 'new-project', 'plus', 'primary')}</div><div class="toolbar"><input id="project-search" placeholder="搜索项目名称、主题或描述…"><select id="project-category"><option value="">全部主题</option>${categories.map(c => `<option>${esc(c.name)}</option>`).join('')}</select><select id="project-status"><option value="">全部状态</option><option value="进行中">进行中</option><option value="已完成">已完成</option><option value="已归档">已归档</option></select>${btn('管理主题', 'categories', 'tag')}<div class="segmented"><button data-action="project-view-grid" class="${projectListMode === 'grid' ? 'active' : ''}" title="项目卡片">${icon('grid')}</button><button data-action="project-view-list" class="${projectListMode === 'list' ? 'active' : ''}" title="项目列表">${icon('list')}</button></div></div><div id="project-list">${projectCards(projects)}</div>`; }
+function projectCards(items) { if (items.length && projectListMode === 'list')
+    return `<section class="section"><div class="tablewrap"><table><thead><tr><th>项目名称</th><th>主题</th><th>状态</th><th>文件数量</th><th>最近更新</th></tr></thead><tbody>${items.map(p => `<tr><td><a href="#" data-project="${attr(p.id)}"><strong>${esc(p.title)}</strong></a>${p.source_confirmed === 0 ? '<p><span class="badge amber">Chat / Work 类型待确认</span></p>' : ''}</td><td>${esc(p.category || '未分类')}</td><td>${friendlyStatus(p.status)}</td><td>${p.file_count || 0}</td><td>${time(p.updated_at, true)}</td></tr>`).join('')}</tbody></table></div></section>`; return items.length ? `<div class="projectgrid">${items.map(p => `<article class="projectcard" data-project="${attr(p.id)}"><div class="projecttop"><span class="foldericon">${icon('folder')}</span><span class="badge ${['completed', '已完成'].includes(p.status) ? 'green' : 'gray'}">${friendlyStatus(p.status)}</span></div><h3>${esc(p.title)}</h3>${p.source_confirmed === 0 ? '<span class="badge amber">会话来源待确认 · 尚未认定 Work</span>' : ''}<p>${esc(p.description || p.original_title || '添加项目描述，让成果更容易被找到。')}</p><span class="badge gray">${esc(p.category || '未分类')}</span><div class="projectmeta"><span>${p.file_count || 0} 份文件${p.source_confirmed === 0 ? ' · 待确认 Chat/Work' : ''}</span><span>${time(p.updated_at || p.created_at, true)}</span></div></article>`).join('')}</div>` : empty('还没有项目', '粘贴真实 Work 标题，建立独立项目。相同标题的不同任务不会自动合并。', 'new-project', '新建项目', 'folder'); }
+async function projectPage() { const d = await rpc('project_detail', { id: projectID }), p = d.project; return `<div class="pagehead"><button class="ghost small" data-action="goto-projects">${icon('arrow')} 返回项目中心</button><div class="actions">${projects.find(p => p.id === projectID)?.source_confirmed === 0 ? btn('确认属于 Work', 'confirm-project', 'check', 'primary') : ''}${btn('编辑项目', 'edit-project', 'edit')}${btn('合并项目', 'merge-project', 'link')}${btn('拆分项目', 'split-project', 'folder')}${Number(projects.find(p => p.id === projectID)?.file_count) === 0 ? btn('删除空项目', 'delete-project', 'trash', 'danger') : ''}${btn('导入文件', 'import', 'upload', 'primary')}</div></div><div class="projecthero"><span class="foldericon">${icon('folder')}</span><div><h1>${esc(p.title)}</h1><p>${esc(p.description || '暂无项目描述')}</p><span class="badge">${esc(p.category || '未分类')}</span> <span class="badge green">${friendlyStatus(p.status)}</span> <span class="badge gray">${p.file_count || array(d.files).length} 份文件</span></div></div><div class="twocol"><section class="section"><div class="sectionhead"><h2>项目文件</h2>${btn('项目 AI 总结', 'project-ai', 'spark', 'small')}</div><div id="selection-bar"></div>${array(d.files).length ? fileRows(array(d.files), true) : empty('项目还没有成果文件', '将文件导入本项目，即可统一预览、搜索和管理版本。', 'import')}${array(d.missing_attachments).length ? '<div class="divider"></div><h3>需要补充原文件</h3><p class="footnote">官方导出只包含以下附件的元数据，当前没有可归档的文件实体。请下载原文件后手动导入。</p>' + array(d.missing_attachments).map(m => `<div class="version"><strong>${esc(m.name || '未命名附件')}</strong><p>${esc(m.status || '需要补充原文件')}</p><small>会话 ${esc(m.conversation_id || '未提供')}</small></div>`).join('') : ''}</section><div><section class="section"><h2>任务来源</h2><dl class="kv"><dt>原始 Work 标题</dt><dd>${esc(p.original_title || '用户尚未提供')}</dd><dt>标题来源</dt><dd>${esc(sourceLabel(p.title_source))}</dd><dt>会话标识</dt><dd>${esc(p.conversation_id || '未提供')}</dd><dt>标题获取时间</dt><dd>${time(p.title_obtained_at)}</dd><dt>创建时间</dt><dd>${time(p.created_at)}</dd><dt>最近更新</dt><dd>${time(p.updated_at)}</dd></dl>${array(d.sources).length > 1 ? '<h3>关联的原始任务</h3>' + array(d.sources).map(s => `<div class="version"><strong>${esc(s.title)}</strong><p>${esc(s.title_source)} · ${esc(s.confidence)}</p><small>${esc(s.conversation_id || '未提供会话 ID')}</small>${s.source_url ? `<p><a href="${safeLink(s.source_url)}" target="_blank" rel="noopener noreferrer">打开来源会话 →</a></p>` : ''}</div>`).join('') : ''}${p.source_url ? `<a href="${safeLink(p.source_url)}" target="_blank" rel="noopener noreferrer">${icon('external')} 打开来源会话</a>` : ''}<div class="divider"></div><p class="footnote">${p.deepseek_allowed ? '本项目已允许向 DeepSeek 发送经预览确认的正文片段。' : '默认仅本地处理。DeepSeek 访问权限尚未开启。'}</p>${btn(p.deepseek_allowed ? '关闭 DeepSeek 授权' : '管理 DeepSeek 授权', 'project-auth', 'shield', 'small')}</section><section class="section"><h2>项目时间线</h2>${activity(array(d.events).slice(0, 12))}</section></div></div>`; }
+function safeLink(value) { try {
+    const u = new URL(String(value));
+    return ['https:', 'http:'].includes(u.protocol) ? attr(u.href) : '#';
+}
+catch {
+    return '#';
+} }
+async function filesPage() { const pending = page === 'inbox', trash = page === 'trash'; const r = await rpc('files', { ...filter, status: pending ? 'pending' : trash ? 'trash' : 'managed', limit: 40, offset }); files = array(r.items); total = Number(r.total) || 0; return `<div class="pagehead"><div><h1>${pending ? '待确认收件箱' : trash ? '回收站' : '文件中心'}</h1><p>${pending ? '确认文件来源与项目归属，让档案保持清晰可靠。' : trash ? '误删文件可以恢复。此处操作仅影响本地 WorkVault 档案。' : '预览、检索和管理你的全部 Work 成果。'}</p></div><div class="actions">${!trash ? btn('检查外部编辑', 'check-edits', 'refresh') : ''}${!trash ? btn('导入文件', 'import', 'upload', 'primary') : ''}</div></div>${pending && status.pending_projects ? `<div class="notice warning">${icon('info')}另有 ${status.pending_projects} 个官方导出会话无法区分 Chat / Work。请在项目中心打开候选项目，确认属于 Work 后纳入正式档案。${btn('查看候选项目', 'goto-projects', 'folder', 'small')}</div>` : ''}${pending ? '<div class="notice">' + icon('info') + '下载目录中的文件不会被自动认定为 Work 成果。请选择文件，确认属于 Work 后再关联项目。</div>' : ''}<div class="toolbar"><input id="file-q" placeholder="搜索文件名、项目名或标签…" value="${attr(filter.q)}"><select id="file-project">${projectOptions('全部项目').map(([v, l]) => `<option value="${attr(v)}" ${v === filter.project_id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><select id="file-ext"><option value="">全部格式</option>${['pdf', 'docx', 'xlsx', 'pptx', 'md', 'txt', 'csv', 'json', 'py', 'png', 'jpg', 'webp', 'zip'].map(x => `<option value="${x}" ${x === filter.ext ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}</select><select id="file-sort">${[['newest', '最近更新'], ['oldest', '最早更新'], ['name', '文件名称'], ['size', '文件大小']].map(([v, l]) => `<option value="${v}" ${filter.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button id="favorite-filter" class="${filter.favorite ? 'primary' : ''}" title="仅收藏">${icon('star')}</button><div class="segmented"><button data-action="view-list" class="${listMode === 'list' ? 'active' : ''}" title="列表视图">${icon('list')}</button><button data-action="view-grid" class="${listMode === 'grid' ? 'active' : ''}" title="网格视图">${icon('grid')}</button></div></div><div id="selection-bar"></div><section class="section">${files.length ? (listMode === 'grid' ? fileGrid(files) : fileRows(files, true)) : empty(filter.q ? '没有找到相关文件' : pending ? '收件箱已清空' : trash ? '回收站为空' : '文件库等待你的第一份成果', filter.q ? '尝试其他关键词或清除筛选条件。' : pending ? '新发现但来源不明的文件会在这里等待确认。' : '拖拽文件或文件夹到此窗口，或使用导入按钮。', !pending && !trash && !filter.q ? 'import' : '')}<div class="pager"><span>共 ${total} 份文件${total ? ` · 第 ${Math.floor(offset / 40) + 1} / ${Math.ceil(total / 40)} 页` : ''}</span><div class="actions"><button data-action="prev" ${offset === 0 ? 'disabled' : ''}>上一页</button><button data-action="next" ${offset + 40 >= total ? 'disabled' : ''}>下一页</button></div></div></section>`; }
+async function sourcesPage() { const d = await rpc('sources'); return `<div class="pagehead"><div><h1>同步与接收中心</h1><p>只观察你授权的目录，原始文件始终保留。</p></div><div class="actions">${btn('历史数据导入', 'history', 'book')}${btn('添加接收目录', 'add-source', 'plus')}${btn('扫描授权目录', 'scan', 'sync', 'primary')}</div></div><div class="notice">${icon('shield')}ChatGPT 个人账户的 Work 任务与文件公开授权接口当前未验证可用。下方状态只表示本地文件接收，不表示已连接 ChatGPT 账号。</div><section class="section"><h2>文件来源</h2><div class="sourcecard"><span class="foldericon">${icon('lock')}</span><div class="sourcebody"><h3>ChatGPT 官方账户接口 <span class="badge gray">当前不可用</span></h3><p>不会读取登录 Cookie、应用私有数据库或浏览器凭据。</p><p>替代方式：保存成果至专用目录、拖拽导入，或通过官方导出包获取任务标题。</p></div></div>${array(d.items).map(s => `<div class="sourcecard"><span class="foldericon">${icon(s.kind === 'downloads' ? 'download' : 'inbox')}</span><div class="sourcebody"><h3>${s.kind === 'downloads' ? '下载目录 · 待确认来源' : 'Work 专用接收目录'} <span class="badge ${s.enabled ? 'green' : 'gray'}">${s.enabled ? '监控已启用' : '已暂停'}</span></h3><p>${esc(s.path)}</p><p>最近扫描：${time(s.last_scan)}${s.error ? ' · ' + esc(s.error) : ''}</p></div><button class="small" data-source-toggle="${attr(s.id)}" data-enabled="${s.enabled ? '0' : '1'}">${s.enabled ? '暂停' : '启用'}</button><button class="small danger" data-source-delete="${attr(s.id)}">移除</button></div>`).join('')}${!array(d.items).length ? empty('还没有启用目录监控', '添加一个明确授权的目录。系统只登记稳定文件，忽略临时下载与符号链接。', 'add-source', '添加目录', 'folder') : ''}</section><div class="twocol"><section class="section"><h2>接收日志</h2><div class="loglist">${activity(array(d.logs))}</div></section><section class="section"><h2>可靠的标题关联</h2><p class="muted" style="font-size:12px">使用官方导出中的会话标题，或主动粘贴 Work 标题和链接。仅凭文件名推测的标题不会被当作原始任务标题。</p>${btn('新建关联项目', 'new-project', 'link')}${btn('导入官方导出包', 'history', 'book')}</section></div><section class="section"><div class="sectionhead"><h2>导入任务</h2>${btn('刷新任务', 'import-jobs', 'refresh', 'small')}</div><div id="import-jobs">${await importJobsHTML()}</div></section>`; }
+async function importJobsHTML() { try {
+    const d = await rpc('import_jobs');
+    return array(d.items).slice(0, 20).map(j => `<div class="activity"><div class="circle">${icon(j.status === 'failed' ? 'info' : 'upload')}</div><div style="flex:1"><p>${esc(j.source || j.id)} · ${esc(j.status || '')}</p><small>${time(j.created_at)} ${esc(j.error || '')}</small></div>${['failed', 'partial', 'cancelled'].includes(j.status) ? `<button class="small" data-retry="${attr(j.id)}">重试</button>` : ''}</div>`).join('') || '<p class="muted">暂无导入任务</p>';
+}
+catch {
+    return '<p class="muted">暂无可显示的导入记录</p>';
+} }
+async function settingsPage() { const d = await rpc('settings'), s = d.settings || {}; let resources = {}; try {
+    resources = await rpc('resources');
+    const startup = await rpc('startup_status');
+    s.startup = startup.enabled;
+}
+catch { } return `<div class="pagehead"><div><h1>设置与数据管理</h1><p>你的文件、你的设备、你的控制权。</p></div>${btn('在浏览器中打开', 'open-browser', 'external')}</div><div class="settinggrid"><section class="section"><h2>本地文件库</h2><p class="code">${esc(status.root)}</p><dl class="kv"><dt>档案空间</dt><dd>${bytes(status.bytes)}</dd><dt>磁盘剩余</dt><dd>${bytes(status.free_bytes)}</dd><dt>版本</dt><dd>${esc(status.version || '1.0.0')}</dd></dl><div class="actions">${btn('迁移存储位置', 'migrate', 'folder')}${btn('选择已有文件库', 'switch-library', 'folder')}${btn('检查文件完整性', 'integrity', 'shield')}</div><div class="divider"></div><h3>手动备份与恢复</h3><p class="muted" style="font-size:12px">不会自动或定时备份。备份包含数据库与文件版本、SHA-256 清单，密钥不随备份导出。</p><div class="actions">${btn('创建备份', 'backup', 'download')}${btn('校验 / 恢复备份', 'restore', 'refresh')}</div></section><section class="section"><h2>应用与资源</h2>${selectField('theme', '外观主题', [['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']], String(s.theme || localStorage.getItem('wv-theme') || 'system'))}<label class="checkfield"><input name="startup" type="checkbox" ${s.startup ? 'checked' : ''}>登录 Mac 后启动 WorkVault（默认关闭）</label>${field('scan_interval', '目录扫描间隔（秒）', s.scan_interval || 15, 'number', '最低建议 10 秒；仅扫描已授权目录，不解析正文。')}<div class="actions">${btn('保存应用设置', 'save-settings', 'check', 'primary')}${btn('查看资源', 'resources', 'disk')}</div><p class="footnote" style="margin-top:14px">${esc(resources.pid ? '进程 PID ' + resources.pid : '资源数据按需读取')} ${resources.memory_bytes ? ' · 内存 ' + bytes(resources.memory_bytes) : ''}</p><div class="divider"></div>${btn('查看本地日志', 'logs', 'list')}${btn('退出并停止服务', 'shutdown', 'power', 'danger')}</section></div><section class="section"><div class="sectionhead"><h2>可选 AI 配置</h2><span class="badge gray">默认关闭 · 手动触发</span></div><div class="notice">${icon('shield')}导入、扫描与启动应用都不会分析文件正文或调用模型。DeepSeek 会将预览确认的必要片段发送到其服务。</div><div id="ai-settings"><div class="formgrid">${field('ollama_url', '本地 Ollama 地址', s.ollama_url || 'http://127.0.0.1:11434', 'url', '仅允许本机回环地址；不自动启动或下载模型。')}${field('ollama_model', '本地推理模型', s.ollama_model || '', '', '请填写已经下载的本地模型名称。')}${field('embedding_model', '本地嵌入模型', s.embedding_model || '', '', '建立语义索引时使用；不会发送到 DeepSeek。')}${field('deepseek_url', 'DeepSeek 官方 API 地址', s.deepseek_url || 'https://api.deepseek.com', 'url')}${field('deepseek_model', 'DeepSeek 模型名称', s.deepseek_model || 'deepseek-flash', '', '可随官方模型更新修改。')}${field('ai_timeout', '请求超时（秒）', s.ai_timeout || 120, 'number')}${field('ai_max_chars', '单次最多正文字符', s.ai_max_chars || 12000, 'number')}${field('ai_max_tokens', '最大输出 Token', s.ai_max_tokens || 1200, 'number')}${field('price_input', '输入价格（每百万 Token）', s.price_input ?? '', 'number', '按你核实的官方当前价格填写，币种需保持一致。')}${field('price_output', '输出价格（每百万 Token）', s.price_output ?? '', 'number')}${field('budget_request', '单次费用上限', s.budget_request ?? '', 'number')}${field('budget_day', '每日费用上限', s.budget_day ?? '', 'number')}${field('budget_month', '每月费用上限', s.budget_month ?? '', 'number')}</div><div class="actions">${btn('保存 AI 配置', 'save-ai-settings', 'check', 'primary')}${btn('配置 API Key', 'api-key', 'lock')}${btn('检测本地 AI', 'ai-detect', 'refresh')}</div><p class="footnote" style="margin-top:15px">API Key 存入 macOS Keychain。价格或预算未配置时，收费请求会被阻止。不会要求 ChatGPT 密码。</p></div></section><section class="section"><h2>关于 WorkVault</h2><p class="muted" style="font-size:12px">为本地成果管理而构建 · Apple Silicon 原生入口 · 本地 SQLite 与文件存储 · 无遥测<br>当前交付为本机未公证构建。官方接口状态及限制请查看随附文档。</p><div class="actions">${btn('管理主题分类', 'categories', 'tag')}${btn('重新查看引导', 'onboarding', 'info')}</div></section>`; }
+async function aiPage() { let a = {}; try {
+    a = await rpc('ai_status');
+}
+catch (e) {
+    a = { error: e instanceof Error ? e.message : String(e) };
+} return `<div class="pagehead"><div><h1>AI 知识中心</h1><p>由你主动开启分析，让知识保留来源。</p></div><div class="actions">${activeJob ? btn('查看运行中任务', 'job-resume', 'clock') : ''}${btn('AI 配置', 'goto-settings', 'settings')}</div></div><div class="AIhero">${icon('spark')}<div><h2>需要时，再让 AI 参与。</h2><p>普通文件管理无需模型。正文提取、全文索引、嵌入和云端推理均由你手动触发。</p></div></div><div class="stats">${stat('本地 Ollama', a.ollama_available ? '可连接' : '未连接', array(a.models).length + ' 个可用模型', 'spark')}${stat('DeepSeek', a.key_configured ? '已配置密钥' : '未配置', '仍需逐项目授权与发送确认', 'lock')}${stat('已索引片段', a.indexed_chunks || 0, '本地持久化检索索引', 'book')}${stat('API 请求次数', array(a.requests).length, '按实际请求记录统计', 'sync')}</div>${a.error ? `<div class="notice warning">${esc(a.error)}</div>` : ''}<div class="twocol"><section class="section"><h2>检索本地知识</h2><div class="toolbar"><input id="ai-query" placeholder="输入研究问题或检索关键词…"><button data-action="ai-search" class="primary">${icon('search')} 检索</button></div><div class="actions"><select id="ai-project">${projectOptions('全部已索引项目').map(([v, l]) => `<option value="${attr(v)}">${esc(l)}</option>`).join('')}</select><label class="checkfield"><input id="semantic" type="checkbox">使用本地语义检索</label></div><div id="ai-results">${empty('每个答案，都从真实文件开始', '先为文件或项目手动建立索引，再检索相关片段。不支持的内容会显示真实解析状态。', '', '', 'book')}</div></section><section class="section"><h2>手动分析与索引</h2><p class="muted" style="font-size:12px">为单个文件、多个文件或整个项目执行摘要、标签建议、主题分析、比较或跨文件问答。</p><div class="actions">${btn('开始 AI 分析', 'ai-compose', 'spark', 'primary')}${btn('建立 / 重建索引', 'ai-index', 'book')}${btn('删除索引', 'ai-delete-index', 'trash')}${btn('检测本地服务', 'ai-detect', 'refresh')}</div><div class="divider"></div><h3>项目云端权限</h3><p class="footnote">默认只允许本地处理。允许 DeepSeek 后，每次发送仍需预览确认；关闭权限不会删除服务此前已接收的数据。</p>${btn('管理项目授权', 'manage-auth', 'shield')}</section></div><section class="section"><h2>实际 API 使用记录</h2><div class="tablewrap"><table><thead><tr><th>时间</th><th>服务 / 模型</th><th>状态</th><th>输入 Token</th><th>输出 Token</th><th>估算费用</th></tr></thead><tbody>${array(a.requests).slice(0, 30).map(r => `<tr><td>${time(r.created_at)}</td><td>${esc(r.provider || '')} / ${esc(r.model || '')}</td><td>${esc(r.status || '')}</td><td>${esc(r.input_tokens ?? '—')}</td><td>${esc(r.output_tokens ?? '—')}</td><td>${esc(r.estimated_cost ?? r.cost ?? '—')}</td></tr>`).join('')}</tbody></table></div>${!array(a.requests).length ? '<p class="chartempty">没有发生 AI 请求；导入文件不会自动调用 AI。</p>' : ''}</section>`; }
+function bindPage() { bindActions($('#content')); $$('[data-page]', $('#content')).forEach(n => n.onclick = e => { e.preventDefault(); void go(n.dataset.page); }); $$('[data-project]').forEach(n => n.onclick = e => { e.preventDefault(); projectID = n.dataset.project; page = 'project'; selected.clear(); void render(); }); bindFiles($('#content')); if (page === 'projects') {
+    const update = () => { const q = $('#project-search').value.toLowerCase(), c = $('#project-category').value, s = $('#project-status').value; $('#project-list').innerHTML = projectCards(projects.filter(p => (!q || [p.title, p.category, p.description].join(' ').toLowerCase().includes(q)) && (!c || p.category === c) && (!s || p.status === s))); $$('[data-project]', $('#project-list')).forEach(n => n.onclick = () => { projectID = n.dataset.project; page = 'project'; void render(); }); };
+    ['#project-search', '#project-category', '#project-status'].forEach(s => $(s).addEventListener(s === '#project-search' ? 'input' : 'change', update));
+} if (['files', 'inbox', 'trash'].includes(page)) {
+    let timer;
+    $('#file-q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { filter.q = $('#file-q').value; offset = 0; void render(); }, 450); });
+    ['project', 'ext', 'sort'].forEach(k => $(`#file-${k}`).onchange = () => { filter[k === 'project' ? 'project_id' : k] = $(`#file-${k}`).value; offset = 0; void render(); });
+    $('#favorite-filter').onclick = () => { filter.favorite = !filter.favorite; offset = 0; void render(); };
+} $$('[data-source-toggle]').forEach(n => n.onclick = () => void run(async () => { const d = await rpc('sources'), s = array(d.items).find(x => x.id === n.dataset.sourceToggle); await rpc('source_save', { ...s, enabled: n.dataset.enabled === '1' }); await render(); })); $$('[data-source-delete]').forEach(n => n.onclick = () => void run(async () => { await rpc('source_delete', { id: n.dataset.sourceDelete }); await render(); })); $$('[data-retry]').forEach(n => n.onclick = () => void run(async () => { await rpc('import_retry', { id: n.dataset.retry }); toast('重试已完成'); await render(); })); }
+function bindActions(root) { $$('[data-action]', root).forEach(n => n.onclick = e => { e.preventDefault(); void run(() => action(n.dataset.action, n)); }); }
+async function run(fn) { try {
+    await fn();
+}
+catch (e) {
+    fail(e);
+} }
+function bindFiles(root) { $$('[data-detail]', root).forEach(n => n.onclick = e => { if (e.target.closest('[data-select]'))
+    return; e.preventDefault(); void run(() => fileDetail(n.dataset.detail)); }); $$('[data-open]', root).forEach(n => n.onclick = e => { e.preventDefault(); e.stopPropagation(); void run(async () => { await rpc('open_file', { id: n.dataset.open }); toast('已打开受管理工作副本。编辑完成后点击“检查外部编辑”。'); }); }); $$('[data-select]', root).forEach(n => n.onclick = e => { e.stopPropagation(); n.checked ? selected.add(n.dataset.select) : selected.delete(n.dataset.select); n.closest('tr,.filecard')?.classList.toggle('selected', n.checked); selectionBar(); }); const all = $('#select-all', root); if (all)
+    all.onchange = () => { $$('[data-select]', root).forEach(n => { n.checked = all.checked; n.checked ? selected.add(n.dataset.select) : selected.delete(n.dataset.select); n.closest('tr,.filecard')?.classList.toggle('selected', n.checked); }); selectionBar(); }; $$('[data-context]', root).forEach(n => n.onclick = e => { e.preventDefault(); e.stopPropagation(); showContext(n.dataset.context, e); }); $$('[data-file]', root).forEach(n => n.oncontextmenu = e => { e.preventDefault(); showContext(n.dataset.file, e); }); selectionBar(); }
+function selectionBar() { const n = $('#selection-bar'); if (!n)
+    return; n.innerHTML = selected.size ? `<div class="selectedbar"><span>已选择 ${selected.size} 份文件</span>${page === 'trash' ? btn('恢复', 'batch-restore', 'refresh', 'small') : btn(page === 'inbox' ? '确认归属' : '关联项目', 'batch-project', 'folder', 'small') + btn('标签', 'batch-tags', 'tag', 'small') + btn('收藏', 'batch-favorite', 'star', 'small') + btn(page === 'inbox' ? '忽略 / 移出' : '移至回收站', 'batch-trash', 'trash', 'small danger')}${btn('取消选择', 'deselect', '', 'small')}</div>` : ''; bindActions(n); }
+function showContext(id, e) { contextNode?.remove(); contextNode = document.createElement('div'); contextNode.className = 'context'; contextNode.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px'; contextNode.style.top = Math.min(e.clientY, window.innerHeight - 260) + 'px'; contextNode.innerHTML = btn('预览与详情', 'ctx-detail', 'files') + btn('使用默认应用打开', 'ctx-open', 'external') + btn('Finder 中定位', 'ctx-reveal', 'folder') + btn('重命名', 'ctx-rename', 'edit') + btn('导出文件', 'ctx-export', 'download') + btn('移至回收站', 'ctx-trash', 'trash', 'danger'); document.body.append(contextNode); $$('[data-action]', contextNode).forEach(n => n.onclick = () => { contextNode?.remove(); void run(async () => { switch (n.dataset.action) {
+    case 'ctx-detail':
+        await fileDetail(id);
+        break;
+    case 'ctx-open':
+        await rpc('open_file', { id });
+        toast('已打开可编辑工作副本');
+        break;
+    case 'ctx-reveal':
+        await rpc('reveal_file', { id });
+        break;
+    case 'ctx-rename':
+        await renameFile(id);
+        break;
+    case 'ctx-export':
+        await exportFile(id);
+        break;
+    case 'ctx-trash':
+        await rpc('file_update', { ids: [id], status: 'trash' });
+        toast('已移至回收站');
+        await render();
+        break;
+} }); }); }
+async function action(a, _node) { if (a.startsWith('goto-')) {
+    await go(a.slice(5));
+    return;
+} switch (a) {
+    case 'close':
+        closeModal();
+        break;
+    case 'reload':
+        await render();
+        break;
+    case 'theme': {
+        const current = document.documentElement.dataset.theme;
+        setTheme(current === 'dark' ? 'light' : 'dark');
+        await rpc('settings_save', { values: { theme: localStorage.getItem('wv-theme') } });
+        break;
+    }
+    case 'new-project':
+        await projectForm();
+        break;
+    case 'confirm-project':
+        await rpc('project_confirm', { id: projectID });
+        toast('已由用户确认属于 Work');
+        await render();
+        break;
+    case 'edit-project':
+        await projectForm((await rpc('project_detail', { id: projectID })).project);
+        break;
+    case 'import':
+        await importDialog();
+        break;
+    case 'history':
+        await historyImport();
+        break;
+    case 'backup':
+        await backup();
+        break;
+    case 'restore':
+        await restore();
+        break;
+    case 'migrate':
+        await migrate();
+        break;
+    case 'switch-library': {
+        const path = await pickDirectory();
+        if (path && await confirmDialog('切换已有文件库', `将当前文件库切换至：${path}。两个目录的数据都会保留。`, '切换文件库')) {
+            await rpc('switch_library', { path });
+            toast('文件库已切换');
+            await render();
+        }
+        break;
+    }
+    case 'integrity': {
+        toast('正在校验文件，请稍候…');
+        const r = await rpc('integrity');
+        modal('文件完整性检查', `<p>已检查 ${esc(r.checked)} 个文件实体。</p><div class="result">${esc(array(r.errors).length ? array(r.errors).join('\n') : '所有已检查文件的 SHA-256 校验通过。')}</div>`);
+        break;
+    }
+    case 'logs': {
+        const r = await rpc('logs');
+        modal('本地操作日志', `<div class="loglist">${activity(array(r.items))}</div>`, '', true);
+        break;
+    }
+    case 'resources': {
+        const r = await rpc('resources');
+        modal('实时资源状态', `<div class="result">${esc(JSON.stringify(r, null, 2))}</div>`);
+        break;
+    }
+    case 'open-browser':
+        await rpc('open_browser');
+        break;
+    case 'shutdown':
+        if (await confirmDialog('退出 WorkVault', '退出后，本地服务和目录监控将停止。已保存的文件不会受到影响。', '退出并停止')) {
+            await rpc('shutdown');
+            $('#app').innerHTML = empty('WorkVault 已停止', '关闭此窗口即可。再次双击应用图标可以启动。', '', '', 'power');
+        }
+        break;
+    case 'project-view-list':
+    case 'project-view-grid':
+        projectListMode = a === 'project-view-list' ? 'list' : 'grid';
+        localStorage.setItem('wv-project-list', projectListMode);
+        await render();
+        break;
+    case 'view-list':
+    case 'view-grid':
+        listMode = a === 'view-list' ? 'list' : 'grid';
+        localStorage.setItem('wv-list', listMode);
+        await render();
+        break;
+    case 'prev':
+        offset = Math.max(0, offset - 40);
+        await render();
+        break;
+    case 'next':
+        offset += 40;
+        await render();
+        break;
+    case 'deselect':
+        selected.clear();
+        $$('[data-select]').forEach(n => n.checked = false);
+        $$('.selected').forEach(n => n.classList.remove('selected'));
+        selectionBar();
+        break;
+    case 'batch-project':
+        await associate([...selected]);
+        break;
+    case 'batch-tags':
+        await tagsDialog([...selected]);
+        break;
+    case 'batch-favorite':
+        await rpc('file_update', { ids: [...selected], favorite: true });
+        toast('已收藏所选文件');
+        await render();
+        break;
+    case 'batch-trash':
+        if (await confirmDialog('移至本地回收站', `将 ${selected.size} 份文件移至 WorkVault 回收站。原始下载和 ChatGPT 会话不受影响。`)) {
+            await rpc('file_update', { ids: [...selected], status: 'trash' });
+            await render();
+            toast('已移至回收站，可随时恢复');
+        }
+        break;
+    case 'batch-restore':
+        await rpc('file_update', { ids: [...selected], status: 'managed' });
+        toast('已恢复文件');
+        await render();
+        break;
+    case 'add-source':
+        await sourceForm();
+        break;
+    case 'scan': {
+        const r = await rpc('scan');
+        toast(`扫描完成：发现 ${r.discovered || 0} 份稳定文件${array(r.errors).length ? '；部分路径不可访问' : ''}。新文件需要连续扫描确认写入已完成。`);
+        await render();
+        break;
+    }
+    case 'import-jobs':
+        $('#import-jobs').innerHTML = await importJobsHTML();
+        bindPage();
+        break;
+    case 'categories':
+        await categoryManager();
+        break;
+    case 'delete-project':
+        if (await confirmDialog('删除空项目', '仅删除此空项目记录，原始 ChatGPT 会话不会改变。', '删除项目')) {
+            await rpc('project_delete', { id: projectID });
+            await go('projects');
+            toast('空项目已删除');
+        }
+        break;
+    case 'merge-project':
+        await mergeProject();
+        break;
+    case 'split-project':
+        await splitProject();
+        break;
+    case 'save-settings': {
+        const v = formValues($('#content'));
+        const theme = v.theme;
+        await rpc('settings_save', { values: { theme, scan_interval: Math.max(10, Number(v.scan_interval) || 15) } });
+        await rpc('startup_set', { enabled: v.startup });
+        setTheme(theme);
+        toast('应用设置已保存');
+        break;
+    }
+    case 'save-ai-settings': {
+        const v = formValues($('#ai-settings'));
+        for (const k of ['ai_timeout', 'ai_max_chars', 'ai_max_tokens', 'price_input', 'price_output', 'budget_request', 'budget_day', 'budget_month'])
+            if (v[k] !== '')
+                v[k] = Number(v[k]);
+        await rpc('settings_save', { values: v });
+        toast('AI 配置已保存');
+        break;
+    }
+    case 'api-key':
+        modal('设置 DeepSeek API Key', `<p class="muted">密钥仅写入 macOS Keychain，不会显示在配置、日志或普通备份中。</p>${field('key', 'API Key', '', 'password', '留空并保存将清除已配置密钥。')}`, btn('取消', 'close') + btn('保存到 Keychain', 'save-key', 'lock', 'primary'));
+        break;
+    case 'save-key':
+        await rpc('ai_key', { key: formValues().key });
+        closeModal();
+        toast('Keychain 凭据已更新');
+        break;
+    case 'ai-detect': {
+        toast('正在检测本地服务…');
+        const d = await rpc('ai_status');
+        modal('AI 服务检测', `<dl class="kv"><dt>Ollama</dt><dd>${d.ollama_available ? '服务可连接' : '未检测到本地服务'}</dd><dt>模型</dt><dd>${esc(array(d.models).join('、') || '未发现可用模型')}</dd><dt>DeepSeek 密钥</dt><dd>${d.key_configured ? '已配置' : '未配置'}</dd></dl><p class="footnote">检测不会下载模型、启动推理或发起收费调用。Ollama 需由你单独安装并启动。</p>`);
+        break;
+    }
+    case 'project-auth':
+        await authDialog(projectID);
+        break;
+    case 'manage-auth':
+        await authDialog();
+        break;
+    case 'job-resume':
+        if (activeJob)
+            await showJob(activeJob, 'AI 任务');
+        break;
+    case 'ai-compose':
+        await aiCompose();
+        break;
+    case 'project-ai':
+        await aiCompose(projectID, 'project_summary');
+        break;
+    case 'ai-index':
+        await indexDialog(false);
+        break;
+    case 'ai-delete-index':
+        await indexDialog(true);
+        break;
+    case 'ai-search':
+        await aiSearch();
+        break;
+    case 'check-edits':
+        await checkEdits();
+        break;
+    case 'onboarding':
+        onboardStep = 0;
+        setupData = { root: status.root };
+        renderOnboarding();
+        break;
+} }
+async function pickDirectory() { const d = await rpc('choose_directory'); return d.path || null; }
+async function projectForm(p = {}) { modal(p.id ? '编辑项目' : '新建 Work 项目', `<div class="notice">${icon('info')}标题来源会被保留。缺少会话标识时，同名项目不会自动合并。</div><div class="formgrid">${field('title', '显示标题', p.title || '')}${field('original_title', 'Work 原始标题', p.original_title || '')}${selectField('title_source', '标题来源', [['manual', '用户输入'], ['manual_link', '用户提供的标题与链接'], ...(p.title_source && !['manual', 'manual_link'].includes(p.title_source) ? [[String(p.title_source), sourceLabel(p.title_source)]] : [])], p.title_source || 'manual')}${field('conversation_id', '会话 ID（可选）', p.conversation_id || '')}${field('source_url', '原始 Work 会话链接', p.source_url || '', 'url')}${selectField('category', '主题分类', categories.map(c => [String(c.name), String(c.name)]), p.category || '未分类')}${selectField('status', '项目状态', [['进行中', '进行中'], ['已完成', '已完成'], ['已归档', '已归档']], p.status || '进行中')}${field('tags', '标签（逗号分隔）', tagText(p.tags))}</div><div class="field"><label for="project-description">项目描述 / 原始需求</label><textarea id="project-description" name="description">${esc(p.description || '')}</textarea></div>`, btn('取消', 'close') + btn('保存项目', 'project-submit', 'check', 'primary')); $('[data-action=project-submit]').onclick = () => void run(async () => { const v = formValues(); if (!String(v.title).trim())
+    throw new Error('请输入项目显示标题'); v.tags = String(v.tags).split(/[,，]/).map(x => x.trim()).filter(Boolean); if (!v.original_title)
+    v.original_title = v.title; await rpc('project_save', { ...v, ...(p.id ? { id: p.id } : {}) }); closeModal(); toast('项目已保存'); await render(); }); }
+async function importDialog() { modal('导入 Work 成果', `<div class="notice">${icon('shield')}仅复制至本地档案库，保留原文件。导入不会解析正文或调用 AI。</div>${selectField('project_id', '所属项目', projectOptions(), projectID || filter.project_id || '')}<label class="checkfield"><input name="confirmed" type="checkbox" checked>我确认这些文件属于 Work 成果</label><div class="field"><label>选择导入方式</label><div class="actions">${btn('选择文件', 'pick-import-files', 'files')}${btn('选择整个文件夹', 'pick-import-folder', 'folder')}${btn('网页上传文件', 'browser-import', 'upload')}${btn('网页上传文件夹', 'browser-folder', 'folder')}</div><small>ZIP 可作为压缩档案导入；按需选择展开后逐文件导入。</small></div><div class="field"><label for="import-paths">已选择的文件或目录（每行一个绝对路径）</label><textarea id="import-paths" name="paths" placeholder="也可粘贴本机绝对路径…"></textarea></div><label class="checkfield"><input name="expand_zip" type="checkbox">展开 ZIP 并逐文件导入（安全限额内）</label><div id="import-progress"></div>`, btn('取消', 'close') + btn('开始导入', 'import-submit', 'upload', 'primary')); for (const [a, directory] of [['pick-import-files', false], ['pick-import-folder', true]]) {
+    $(`[data-action=${a}]`).onclick = () => void run(async () => { const d = await rpc('choose_files', { directory, multiple: true }); $('#import-paths').value = array(d.paths).join('\n'); });
+} $('[data-action=browser-import]').onclick = () => { $('#upload').click(); }; $('[data-action=browser-folder]').onclick = () => { $('#folder-upload').click(); }; $('[data-action=import-submit]').onclick = () => void run(async () => { const v = formValues(), p = String(v.paths).split('\n').map(x => x.trim()).filter(Boolean); if (!p.length)
+    throw new Error('请先选择文件或文件夹'); const id = crypto.randomUUID(); currentImport = id; $('#import-progress').innerHTML = `<p class="muted"><span class="spinner"></span> 正在安全复制与哈希校验…</p>${btn('取消后续导入', 'cancel-import', '', 'small')}`; $('[data-action=cancel-import]').onclick = () => void run(async () => { await rpc('import_cancel', { job_id: id }); toast('已请求取消后续文件'); }); $('[data-action=import-submit]').disabled = true; try {
+    const r = await rpc('import', { paths: p, project_id: v.project_id || null, confirmed: v.confirmed, source: 'manual', job_id: id, expand_zip: v.expand_zip });
+    closeModal();
+    toast(`导入完成：新增 ${r.imported || 0}，重复 ${r.duplicates || 0}，失败 ${r.failed || 0}`);
+    if (Number(r.failed) > 0)
+        modal('部分文件导入失败', `<div class="result">${esc(JSON.stringify(r.results, null, 2))}</div>`);
+    await render();
+}
+finally {
+    currentImport = null;
+} }); }
+async function uploadFiles(items) { if (!items.length)
+    return; let v = {}; if ($('#modal-root [name=project_id]'))
+    v = formValues(); let cancelled = false; modal('正在导入文件', `<p id="upload-label"></p><div class="progress"><i id="upload-progress" style="width:0%"></i></div><p class="footnote">流式上传并在本机校验，不会发送到外部服务。</p>`, btn('取消剩余文件', 'upload-cancel')); $('[data-action=upload-cancel]').onclick = () => { cancelled = true; toast('当前文件结束后停止'); }; let ok = 0, failed = 0; for (let i = 0; i < items.length; i++) {
+    if (cancelled)
+        break;
+    const file = items[i];
+    $('#upload-label').textContent = `${i + 1} / ${items.length} · ${file.name}`;
+    try {
+        const q = new URLSearchParams({ name: file.name, project_id: String(v.project_id || projectID || ''), confirmed: String(v.confirmed ?? true) });
+        const r = await fetch('/api/upload?' + q, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream' }, body: file });
+        const data = await r.json();
+        if (!r.ok || data.error)
+            throw new Error(data.error || '上传失败');
+        ok++;
+    }
+    catch (e) {
+        failed++;
+        fail(e);
+    }
+    $('#upload-progress').style.width = ((i + 1) / items.length * 100) + '%';
+} closeModal(); toast(`导入结束：${ok} 份成功，${failed} 份失败${cancelled ? '，已取消剩余' : ''}`); await render(); }
+async function historyImport() { const d = await rpc('choose_files', { multiple: false }); const path = array(d.paths)[0]; if (!path)
+    return; modal('导入官方 ChatGPT 数据', `<p>即将检查 ${esc(path)} 的真实数据结构。</p><p class="muted">会话类型无法区分时会标记待确认；只有元数据的附件会显示“需要补充原文件”，不会伪造附件。支持导出 JSON 或 ZIP（按实现限额）。</p>`, btn('取消', 'close') + btn('读取导出数据', 'history-run', 'book', 'primary')); $('[data-action=history-run]').onclick = () => void run(async () => { $('[data-action=history-run]').disabled = true; const r = await rpc('import_export', { path }); modal('历史数据导入结果', `<div class="result">${esc(JSON.stringify(r, null, 2))}</div>`); await render(); }); }
+async function associate(ids) { modal('确认文件归属', selectField('project_id', '关联到项目', projectOptions('确认属于 Work，暂不关联项目')) + `<label class="checkfield"><input name="replace_projects" type="checkbox">替换原有项目关系（否则增加关联）</label><p class="footnote">同一二进制文件可以关联多个项目，不会为分类重复保存实体。</p>`, btn('取消', 'close') + btn('确认并归档', 'associate-submit', 'check', 'primary')); $('[data-action=associate-submit]').onclick = () => void run(async () => { const v = formValues(); await rpc('file_update', { ids, status: 'managed', project_id: v.project_id, replace_projects: v.replace_projects }); closeModal(); toast('来源已由用户确认，项目关系已更新'); await render(); }); }
+async function tagsDialog(ids, value = '') { modal('编辑文件标签', field('tags', '标签（逗号分隔）', value), btn('取消', 'close') + btn('保存标签', 'tags-submit', 'check', 'primary')); $('[data-action=tags-submit]').onclick = () => void run(async () => { await rpc('file_update', { ids, tags: String(formValues().tags).split(/[,，]/).map(x => x.trim()).filter(Boolean) }); closeModal(); toast('标签已保存'); await render(); }); }
+async function renameFile(id) { const d = await rpc('file_detail', { id }); modal('重命名文件', field('name', '文件显示名称', d.file.name), btn('取消', 'close') + btn('保存名称', 'rename-submit', 'check', 'primary')); $('[data-action=rename-submit]').onclick = () => void run(async () => { await rpc('file_update', { ids: [id], name: formValues().name }); closeModal(); toast('文件名称已更新'); await render(); }); }
+async function exportFile(id, versionID) { const path = await pickDirectory(); if (!path)
+    return; const r = await rpc('export_file', { id, destination: path, ...(versionID ? { version_id: versionID } : {}) }); toast('文件已导出至 ' + String(r.path || path)); }
+async function fileDetail(id) { const d = await rpc('file_detail', { id }), f = d.file; let p; try {
+    p = await rpc('preview', { id });
+}
+catch (e) {
+    p = { kind: 'unsupported', note: e instanceof Error ? e.message : String(e) };
+} let preview = ''; const url = `/content/${encodeURIComponent(id)}`; if (p.kind === 'image')
+    preview = `<img src="${url}" alt="${attr(f.name)}">`;
+else if (p.kind === 'pdf')
+    preview = `<iframe src="${url}" title="PDF 预览"></iframe>`;
+else if (p.kind === 'text' || p.kind === 'office') {
+    if (f.ext === 'md')
+        preview = `<div class="markdown">${markdown(String(p.text || ''))}</div>`;
+    else if (f.ext === 'csv')
+        preview = csvPreview(String(p.text || ''));
+    else if (['py', 'js', 'ts', 'tsx', 'jsx', 'swift', 'rs', 'json', 'c', 'cpp', 'h', 'sh', 'sql', 'java', 'css', 'html', 'yaml', 'yml'].includes(f.ext))
+        preview = `<pre class="highlight">${highlight(String(p.text || ''))}</pre>`;
+    else
+        preview = `<pre>${esc(p.text || '')}</pre>`;
+}
+else
+    preview = `<div class="unsupported">${icon('files')}<p>此格式暂不支持内嵌预览</p><p>可使用默认应用或 macOS 原生能力查看。</p>${btn('默认应用打开', 'detail-open', 'external')}</div>`; modal(f.name, `<div class="previewlayout"><div><div class="previewbox">${preview}</div><p class="previewnote">${esc(p.note || (p.kind === 'office' ? '简化内容预览，不能呈现 Office 原始排版。' : p.kind === 'pdf' ? '浏览器 PDF 预览；复杂内容请使用原生应用确认。' : '本地只读内容预览。'))}</p><div class="actions">${btn('默认应用打开 / 编辑', 'detail-open', 'external')}${btn('Finder 中定位', 'detail-reveal', 'folder')}${btn('导出', 'detail-export', 'download')}</div><div class="divider"></div><div class="tabs"><button class="active" data-detail-tab="versions">历史版本 (${array(d.versions).length})</button><button data-detail-tab="provenance">来源记录</button></div><div id="detail-tabs">${versionsHTML(array(d.versions), id)}</div></div><aside><h3>文件信息</h3><dl class="kv"><dt>格式 / 大小</dt><dd>${esc(String(f.ext || '未知').toUpperCase())} · ${bytes(f.size)}</dd><dt>归档状态</dt><dd>${friendlyStatus(f.status)}</dd><dt>来源类型</dt><dd>${esc(sourceLabel(f.source))}</dd><dt>来源可信度</dt><dd>${esc(f.confidence || '用户确认 / 待确认')}</dd><dt>原始位置</dt><dd>${esc(f.source_path || '未记录')}</dd><dt>创建时间</dt><dd>${time(f.created_at)}</dd><dt>更新时间</dt><dd>${time(f.updated_at)}</dd><dt>关联项目</dt><dd>${esc(array(d.projects).map(p => p.title).join('、') || projectName(f.project_ids))}</dd><dt>标签</dt><dd>${array(f.tags).map(t => `<span class="tag">${esc(t)}</span>`).join('') || '未设置'}</dd></dl><h4 style="font-size:11px;color:var(--muted)">SHA-256</h4><p class="code">${esc(f.hash || '')}</p><div class="actions">${btn('重命名', 'detail-rename', 'edit', 'small')}${btn(f.favorite ? '取消收藏' : '收藏', 'detail-favorite', 'star', 'small')}${btn(f.final ? '取消最终标记' : '标记最终成果', 'detail-final', 'check', 'small')}${btn('标签', 'detail-tags', 'tag', 'small')}${btn('项目归属', 'detail-project', 'folder', 'small')}${btn('上传新版本', 'detail-version', 'upload', 'small')}${btn('手动 AI 分析', 'detail-ai', 'spark', 'small')}${btn(f.status === 'trash' ? '恢复文件' : '移至回收站', 'detail-trash', f.status === 'trash' ? 'refresh' : 'trash', 'small danger')}</div><p class="footnote" style="margin-top:16px">外部编辑打开的是受管理工作副本，历史实体不会被原地改写。保存后请点击文件中心“检查外部编辑”。</p></aside></div>`, '', true); const bindVersions = () => { $$('[data-version-export]').forEach(n => n.onclick = () => void run(() => exportFile(id, n.dataset.versionExport))); $$('[data-version-open]').forEach(n => n.onclick = () => void run(async () => { await rpc('open_file', { id, version_id: n.dataset.versionOpen }); toast('历史版本已打开'); })); $$('[data-version-restore]').forEach(n => n.onclick = () => void run(async () => { if (await confirmDialog('恢复历史版本', '恢复操作将创建一条新版本，现有版本仍被保留。', '恢复为新版本')) {
+    await rpc('version_restore', { id, version_id: n.dataset.versionRestore });
+    toast('已恢复为新版本');
+    await fileDetail(id);
+} })); $$('[data-version-final]').forEach(n => n.onclick = () => void run(async () => { await rpc('version_final', { id, version_id: n.dataset.versionFinal }); await fileDetail(id); })); }; bindVersions(); $$('[data-detail-tab]').forEach(n => n.onclick = () => { $$('[data-detail-tab]').forEach(x => x.classList.toggle('active', x === n)); $('#detail-tabs').innerHTML = n.dataset.detailTab === 'versions' ? versionsHTML(array(d.versions), id) : array(d.provenance).map(s => `<div class="version"><strong>${esc(sourceLabel(s.source || s.source_type))}</strong><p>${esc(s.original_name || s.name || '')}</p><p>${esc(s.original_path || s.source_path || s.path || '')}</p><small>${time(s.imported_at || s.created_at)} · ${esc(s.confidence || '待确认')}</small></div>`).join('') || '<p class="muted">没有更多来源记录。</p>'; bindVersions(); }); const actions = { 'detail-open': async () => { await rpc('open_file', { id }); toast('已打开工作副本；保存后请检查外部编辑'); }, 'detail-reveal': () => rpc('reveal_file', { id }), 'detail-export': () => exportFile(id), 'detail-rename': () => renameFile(id), 'detail-favorite': async () => { await rpc('file_update', { ids: [id], favorite: !f.favorite }); await fileDetail(id); }, 'detail-final': async () => { await rpc('file_update', { ids: [id], final: !f.final }); await fileDetail(id); }, 'detail-tags': () => tagsDialog([id], tagText(f.tags)), 'detail-project': () => associate([id]), 'detail-version': async () => { const c = await rpc('choose_files', { multiple: false }); if (array(c.paths).length) {
+        await rpc('version_add', { id, path: c.paths[0], note: '用户手动上传新版本' });
+        await fileDetail(id);
+    } }, 'detail-ai': () => aiCompose('', 'summary', [id]), 'detail-trash': async () => { await rpc('file_update', { ids: [id], status: f.status === 'trash' ? 'managed' : 'trash' }); closeModal(); toast(f.status === 'trash' ? '文件已恢复' : '已移至回收站'); await render(); } }; Object.entries(actions).forEach(([key, fn]) => $$(`[data-action=${key}]`).forEach(n => n.onclick = () => void run(fn))); }
+function versionsHTML(items, _id) { return items.map((v, i) => `<div class="version"><strong>版本 ${items.length - i}</strong> ${v.is_current ? '<span class="badge green">当前版本</span>' : ''} ${v.is_final ? '<span class="badge">最终版本</span>' : ''}<p>${time(v.created_at)} · ${bytes(v.size)} · ${esc(v.source || '')}</p><p>${esc(v.note || '未添加修改备注')}</p><small class="wrap">SHA-256 ${esc(v.hash)}</small><div class="actions"><button class="small" data-version-open="${attr(v.id)}">打开</button><button class="small" data-version-export="${attr(v.id)}">导出</button><button class="small" data-version-restore="${attr(v.id)}">恢复为新版本</button><button class="small" data-version-final="${attr(v.id)}">标记最终版本</button></div></div>`).join('') || '<p class="muted">尚无历史版本</p>'; }
+function markdown(text) { let s = esc(text); const blocks = []; s = s.replace(/```[^\n]*\n([\s\S]*?)```/g, (_m, c) => { blocks.push(`<pre>${c}</pre>`); return `\u0000${blocks.length - 1}\u0000`; }); s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>').replace(/^## (.+)$/gm, '<h2>$1</h2>').replace(/^# (.+)$/gm, '<h1>$1</h1>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/^[-*] (.+)$/gm, '<div>• $1</div>').replace(/\n/g, '<br>'); return s.replace(/\u0000(\d+)\u0000/g, (_m, i) => blocks[Number(i)]); }
+function highlight(text) { const token = /("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`[^`]*`|\/\/[^\n]*|#[^\n]*|\b(?:const|let|var|function|class|import|from|export|return|if|else|for|while|def|in|as|try|catch|throw|throws|await|async|public|private|func|struct|enum|true|false|null|nil|None|True|False|self|this)\b|\b\d+(?:\.\d+)?\b)/g; let out = '', last = 0; for (const m of text.matchAll(token)) {
+    out += esc(text.slice(last, m.index));
+    const word = m[0], cls = word.startsWith('//') || word.startsWith('#') ? 'comment' : /^['"`]/.test(word) ? 'string' : /^\d/.test(word) ? 'numeric' : 'keyword';
+    out += `<span class="tok-${cls}">${esc(word)}</span>`;
+    last = (m.index || 0) + word.length;
+} return out + esc(text.slice(last)); }
+function csvPreview(text) { const rows = []; let row = [], cell = '', quoted = false; for (let i = 0; i < text.length && rows.length < 150; i++) {
+    const c = text[i];
+    if (c === '"') {
+        if (quoted && text[i + 1] === '"') {
+            cell += '"';
+            i++;
+        }
+        else
+            quoted = !quoted;
+    }
+    else if (c === ',' && !quoted) {
+        row.push(cell);
+        cell = '';
+    }
+    else if (c === '\n' && !quoted) {
+        row.push(cell.replace(/\r$/, ''));
+        rows.push(row);
+        row = [];
+        cell = '';
+    }
+    else
+        cell += c;
+} if ((cell || row.length) && rows.length < 150) {
+    row.push(cell);
+    rows.push(row);
+} return `<div class="tablewrap" style="width:100%;align-self:flex-start"><table class="csvtable"><tbody>${rows.map((r, i) => `<tr>${r.map(c => i === 0 ? `<th>${esc(c)}</th>` : `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table><p class="footnote" style="padding:12px">简化表格预览，最多显示 150 行。</p></div>`; }
+async function checkEdits() { const d = await rpc('check_edits'), items = array(d.items).filter(x => x.changed); modal('外部编辑变更', items.length ? items.map(f => `<div class="version"><strong>${esc(f.name || files.find(x => x.id === f.id)?.name || f.id)}</strong><p>${esc(f.path)}</p><div class="actions"><button class="primary small" data-edit-save="${attr(f.id)}">保存为新版本</button><button class="small" data-edit-keep="${attr(f.id)}">保留现有版本</button></div></div>`).join('') : '<p class="muted">没有检测到工作副本内容变化。请先在默认应用中保存文件。</p>'); $$('[data-edit-save]').forEach(n => n.onclick = () => void run(async () => { await rpc('commit_edit', { id: n.dataset.editSave, note: '用户确认外部编辑' }); toast('已保存为新版本'); await checkEdits(); })); $$('[data-edit-keep]').forEach(n => n.onclick = () => void run(async () => { if (await confirmDialog('放弃此次版本登记', '保留已有档案版本，并放弃该工作副本的变更登记。', '保留现有版本')) {
+    await rpc('discard_edit', { id: n.dataset.editKeep });
+    await checkEdits();
+} })); }
+async function sourceForm() { modal('添加授权接收目录', selectField('kind', '目录用途', [['dedicated', 'Work 专用接收目录'], ['downloads', '下载目录（文件来源待确认）']]) + `<div class="field"><label>授权目录</label><div class="fieldrow"><input name="path" id="source-path" placeholder="选择本机目录…">${btn('选择', 'source-pick', 'folder')}</div><small>仅在本应用运行时监控。不会修改或删除目录内的原始文件。</small></div><label class="checkfield"><input type="checkbox" name="enabled" checked>启用目录监控</label>`, btn('取消', 'close') + btn('保存并授权', 'source-submit', 'check', 'primary')); $('[data-action=source-pick]').onclick = () => void run(async () => { const p = await pickDirectory(); if (p)
+    $('#source-path').value = p; }); $('[data-action=source-submit]').onclick = () => void run(async () => { await rpc('source_save', formValues()); closeModal(); toast('已添加授权目录'); await render(); }); }
+async function categoryManager() { const d = await rpc('categories'); modal('主题分类', `<div id="category-list">${array(d.items).map((c, i) => `<div class="sourcecard" style="padding:10px 0"><input data-cat-name="${attr(c.id)}" value="${attr(c.name)}" style="flex:1"><input data-cat-order="${attr(c.id)}" type="number" value="${attr(c.position ?? i)}" style="width:65px" aria-label="排序"><button class="small" data-cat-save="${attr(c.id)}">保存</button><button class="small danger" data-cat-delete="${attr(c.id)}">删除</button></div>`).join('')}</div><div class="divider"></div>${field('new_category', '新主题名称')}`, btn('关闭', 'close') + btn('新增主题', 'category-add', 'plus', 'primary')); $$('[data-cat-save]').forEach(n => n.onclick = () => void run(async () => { await rpc('category_save', { id: n.dataset.catSave, name: $(`[data-cat-name="${n.dataset.catSave}"]`).value, position: Number($(`[data-cat-order="${n.dataset.catSave}"]`).value) }); toast('主题已保存'); })); $$('[data-cat-delete]').forEach(n => n.onclick = () => void run(async () => { await rpc('category_delete', { id: n.dataset.catDelete }); await categoryManager(); })); $('[data-action=category-add]').onclick = () => void run(async () => { await rpc('category_save', { name: formValues().new_category, position: array(d.items).length }); await categoryManager(); }); }
+async function mergeProject() { modal('合并项目', `<p>将当前项目的文件关系合并到目标项目。相同标题不代表同一任务，请先确认。</p>${selectField('to_id', '目标项目', projects.filter(p => p.id !== projectID).map(p => [p.id, p.title]))}`, btn('取消', 'close') + btn('确认合并', 'merge-submit', 'link', 'primary')); $('[data-action=merge-submit]').onclick = () => void run(async () => { const to = formValues().to_id; if (!to)
+    throw new Error('没有可合并的目标项目'); await rpc('project_merge', { from_id: projectID, to_id: to }); projectID = to; closeModal(); toast('项目已合并，来源记录保留'); await render(); }); }
+async function splitProject() { const d = await rpc('project_detail', { id: projectID }); modal('拆分项目', field('title', '新项目名称') + `<p class="footnote">选择需要移动至新项目的文件：</p>${array(d.files).map(f => `<label class="checkfield"><input type="checkbox" name="split-file" value="${attr(f.id)}">${esc(f.name)}</label>`).join('')}`, btn('取消', 'close') + btn('建立独立项目', 'split-submit', 'folder', 'primary')); $('[data-action=split-submit]').onclick = () => void run(async () => { const ids = $$('[name=split-file]:checked').map(n => n.value); if (!ids.length)
+    throw new Error('请选择需要拆分的文件'); await rpc('project_split', { id: projectID, title: $('[name=title]').value, file_ids: ids }); closeModal(); toast('已拆分为新项目'); await render(); }); }
+async function backup() { const destination = await pickDirectory(); if (!destination)
+    return; modal('创建手动备份', `<p>保存目录：</p><p class="code">${esc(destination)}</p><label class="checkfield"><input type="checkbox" name="include_index">包含可重新生成的 AI 索引</label><p class="footnote">将创建独立备份目录并生成校验清单。API Key 不会写入备份。</p>`, btn('取消', 'close') + btn('创建并校验备份', 'backup-run', 'shield', 'primary')); $('[data-action=backup-run]').onclick = () => void run(async () => { const v = formValues(); $('[data-action=backup-run]').disabled = true; toast('正在创建备份，请保持应用运行…'); const r = await rpc('backup_create', { destination, include_index: v.include_index }); modal('备份创建完成', `<p>已复制并校验 ${esc(r.files || r.checked || '')} 个文件。</p><p class="code">${esc(r.path)}</p><p class="footnote">请妥善保管此目录；可在“校验 / 恢复备份”中检查清单和恢复到独立目录。</p>`); }); }
+async function restore() { const path = await pickDirectory(); if (!path)
+    return; toast('正在校验备份…'); const r = await rpc('backup_inspect', { path }); modal('备份校验与恢复预览', `<span class="badge ${r.valid ? 'green' : 'red'}">${r.valid ? '校验通过' : '校验失败'}</span><div class="result" style="margin-top:15px">${esc(JSON.stringify(r.summary || r, null, 2))}</div>${array(r.errors).length ? `<p class="danger">${esc(array(r.errors).join('；'))}</p>` : ''}<p class="footnote">恢复到新的独立目录。不会直接覆盖当前正在使用的文件库。校验通过后请选择恢复目标。</p>`, btn('取消', 'close') + (r.valid ? btn('选择目标并恢复', 'restore-run', 'refresh', 'primary') : '')); if (r.valid)
+    $('[data-action=restore-run]').onclick = () => void run(async () => { const parent = await pickDirectory(); if (!parent)
+        return; const destination = parent + '/WorkVault-Restored-' + new Date().toISOString().replace(/[:.]/g, '-'); if (!await confirmDialog('确认恢复到独立目录', `备份：${path}\n目标：${destination}\n现有文件库保留。`, '恢复完整数据'))
+        return; const out = await rpc('backup_restore', { path, destination, confirmed: true }); modal('恢复完成', `<p>备份已恢复并完成完整性检查。</p><p class="code">${esc(out.path || destination)}</p><p class="footnote">当前文件库保持原状。若需要将恢复数据设为当前文件库，请退出应用并按维护文档切换目录。</p>`); }); }
+async function migrate() { const destination = await pickDirectory(); if (!destination)
+    return; if (!await confirmDialog('迁移本地文件库', `将校验并复制当前文件库到：${destination}\n成功后切换存储位置；旧目录仍被保留。迁移中请勿断开磁盘。`, '开始迁移'))
+    return; toast('正在迁移并校验文件库…'); const r = await rpc('migrate', { destination }); toast('迁移完成，当前目录：' + r.root); await render(); }
+async function authDialog(id = '') { modal('项目 DeepSeek 授权', selectField('project_id', '选择项目', projectOptions('请选择项目'), id) + `<label class="checkfield"><input type="checkbox" name="allowed" ${projects.find(p => p.id === id)?.deepseek_allowed ? 'checked' : ''}>允许此项目在逐次预览确认后发送必要内容至 DeepSeek</label><div class="notice warning">${icon('info')}这是外部云端服务。文件片段将离开本机，可能产生费用。关闭授权只阻止后续调用，不会删除第三方此前接收的数据。</div>`, btn('取消', 'close') + btn('保存项目权限', 'auth-submit', 'shield', 'primary')); $('[name=project_id]').onchange = () => { $('[name=allowed]').checked = !!projects.find(p => p.id === $('[name=project_id]').value)?.deepseek_allowed; }; $('[data-action=auth-submit]').onclick = () => void run(async () => { const v = formValues(); if (!v.project_id)
+    throw new Error('请选择项目'); await rpc('ai_authorize', v); closeModal(); toast('项目权限已更新'); await render(); }); }
+async function aiCompose(id = '', mode = 'summary', fileIDs = []) { modal('手动 AI 分析', `<div class="notice">${icon('shield')}先生成发送预览，核实文件、片段、服务和费用后再执行。正文不会在当前步骤发送给模型。</div><div class="formgrid">${selectField('project_id', '分析范围', projectOptions(fileIDs.length ? `已选择 ${fileIDs.length} 个文件` : '请选择项目'), id)}${selectField('provider', '模型服务', [['ollama', '本地 Ollama'], ['deepseek', 'DeepSeek 云端 API']])}${selectField('mode', '分析任务', [['summary', '文件摘要'], ['project_summary', '项目成果总结'], ['tags', '智能标签建议'], ['topic', '主题分析'], ['qa', '跨文件问答'], ['compare', '多文件内容比较'], ['related', '相似与相关内容建议']], mode)}</div><label class="checkfield"><input type="checkbox" name="semantic">问答时使用本地语义检索（需要已建立向量索引与本地嵌入模型）</label><p class="footnote">跨文件问答要求先手动建立当前版本索引，并输入具体问题；没有足够匹配依据时不会生成答案。</p><div class="field"><label>研究问题 / 额外要求（问答模式必填）</label><textarea name="prompt" placeholder="例如：比较各文件对 CO₂ 封存安全性的结论，并列出证据不足之处。"></textarea></div>`, btn('取消', 'close') + btn('生成内容与费用预览', 'ai-preview', 'search', 'primary')); $('[data-action=ai-preview]').onclick = () => void run(async () => { const v = formValues(); if (!v.project_id && !fileIDs.length)
+    throw new Error('请先选择一个项目，或从文件详情发起分析'); $('[data-action=ai-preview]').disabled = true; const r = await rpc('ai_prepare', { ...v, ...(fileIDs.length ? { file_ids: fileIDs } : {}) }); modal('确认本次 AI 分析', `<dl class="kv"><dt>目标服务</dt><dd>${esc(r.endpoint || (v.provider === 'deepseek' ? 'https://api.deepseek.com' : '本地 Ollama'))}</dd><dt>涉及文件</dt><dd>${array(r.files).map(f => esc(typeof f === 'string' ? f : f.name || f.file_name || f.id)).join('<br>') || '请查看下方片段'}</dd><dt>正文字符数</dt><dd>${esc(r.characters)}</dd><dt>估算费用</dt><dd>${esc(r.estimated_cost ?? (v.provider === 'ollama' ? '本地推理，无 API 费用' : '请以实际用量为准'))}</dd></dl>${v.provider === 'deepseek' ? '<div class="notice warning">确认后，下方必要正文片段将发送至 DeepSeek。原始文件和本地索引仍保留在你的 Mac。</div>' : ''}<h3>实际发送片段预览</h3><div class="result">${esc(r.excerpt || r.preview || '')}</div>`, btn('取消', 'close') + btn(v.provider === 'deepseek' ? '确认发送并分析' : '开始本地分析', 'ai-run', 'spark', 'primary'), true); $('[data-action=ai-run]').onclick = () => void run(async () => { const job = await rpc('ai_run', { preview_id: r.preview_id, confirmed: true }); await showJob(job.job_id, 'AI 分析'); }); }); }
+async function indexDialog(remove) { modal(remove ? '删除本地 AI 索引' : '手动建立全文 / 语义索引', selectField('project_id', '项目范围', projectOptions('请选择项目')) + (remove ? '' : `<label class="checkfield"><input type="checkbox" name="embeddings">同时使用本地嵌入模型建立语义向量</label><p class="footnote">此操作会读取所选项目的正文并将提取片段存储在本机。扫描或加密 PDF、解析失败文件会如实显示状态。不会将全文发送到 DeepSeek。</p>`), btn('取消', 'close') + btn(remove ? '删除索引' : '开始索引', 'index-run', remove ? 'trash' : 'book', 'primary')); $('[data-action=index-run]').onclick = () => void run(async () => { const v = formValues(); if (!v.project_id)
+    throw new Error('请选择项目'); if (remove) {
+    await rpc('ai_delete_index', { project_id: v.project_id });
+    closeModal();
+    toast('本地 AI 索引已删除');
+    await render();
+}
+else {
+    const d = await rpc('ai_index', { project_id: v.project_id, embeddings: v.embeddings });
+    await showJob(d.job_id, '建立本地索引');
+} }); }
+async function showJob(id, title) { activeJob = id; modal(title, `<p id="job-state">正在执行…</p><div class="progress"><i id="job-progress" style="width:1%"></i></div><div id="job-result"></div>`, btn('取消任务', 'job-cancel', 'close')); $('[data-action=job-cancel]').onclick = () => void run(async () => { await rpc('ai_cancel', { job_id: id }); toast('已请求取消 AI 任务'); }); const poll = async () => { if (activeJob !== id)
+    return; try {
+    const d = await rpc('ai_job', { job_id: id });
+    if (!$('#job-state'))
+        return;
+    $('#job-state').textContent = d.error || d.status || '处理中';
+    const value = Number(d.progress) || 0;
+    $('#job-progress').style.width = Math.max(2, Math.min(100, value)) + '%';
+    if (['completed', 'done', 'success', 'failed', 'cancelled', 'canceled'].includes(d.status)) {
+        activeJob = null;
+        $('#job-progress').style.width = '100%';
+        const result = d.result;
+        $('#job-result').innerHTML = `<div class="result">${esc(result?.answer || (typeof result === 'string' ? result : JSON.stringify(result || { error: d.error || d.status }, null, 2)))}</div>${array(result?.citations).length ? '<h3 style="margin-top:22px">实际来源引用</h3>' + array(result.citations).map(c => `<div class="searchhit"><a href="#" data-detail="${attr(c.file_id)}"><strong>${esc(c.citation || '')} ${esc(c.file_name)}</strong></a><p>${esc(c.project_title || '未关联项目')} · ${esc(c.locator || '未提供精确位置')}</p></div>`).join('') : ''}<p class="footnote" style="margin-top:14px">输出由模型生成，请依据实际文件核对。引用入口来自实际选取片段；未完整索引的文件不代表已被完整分析。</p>`;
+        bindFiles($('#job-result'));
+        const button = $('[data-action=job-cancel]');
+        button.textContent = '关闭';
+        button.onclick = closeModal;
+        return;
+    }
+    setTimeout(() => void poll(), 1000);
+}
+catch (e) {
+    activeJob = null;
+    fail(e);
+} }; void poll(); }
+async function aiSearch() { const q = $('#ai-query').value; if (!q.trim())
+    throw new Error('请输入检索问题或关键词'); $('#ai-results').innerHTML = '<div class="loading"><span class="spinner"></span></div>'; try {
+    const d = await rpc('ai_search', { q, project_id: $('#ai-project').value || null, semantic: $('#semantic').checked });
+    $('#ai-results').innerHTML = array(d.items).length ? array(d.items).map(r => `<article class="searchhit"><h3 data-detail="${attr(r.file_id)}">${esc(r.file_name || r.name)}</h3><small>${esc(r.project_title || '未关联项目')} · ${esc(r.locator || '提取片段，未提供精确页码')}</small><p>${esc(r.text)}</p></article>`).join('') : empty('没有找到足够依据', '检索只覆盖已手动建立的索引。你可以先为相关项目建立索引，再尝试检索。', '', '', 'search');
+    bindFiles($('#ai-results'));
+}
+catch (e) {
+    $('#ai-results').innerHTML = '';
+    throw e;
+} }
+function setTheme(theme) { localStorage.setItem('wv-theme', theme); document.documentElement.dataset.theme = theme === 'system' ? (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light') : theme; }
+function renderOnboarding() { const names = ['欢迎使用 WorkVault', '检查本机环境', '选择永久存储位置', '可选：监控下载目录', '建立 Work 专用接收目录', '可选：本地 AI', '可选：DeepSeek', '导入历史成果', '准备就绪']; let body = ''; switch (onboardStep) {
+    case 0:
+        body = '<p class="intro">把分散在不同任务中的报告、表格、文献和代码，收进你自己的本地成果库。</p><div class="notice">' + icon('shield') + '文件与数据库保存在本机；不需要服务器，不默认分析正文，不自动启用收费 AI。</div>';
+        break;
+    case 1:
+        body = `<dl class="kv"><dt>本地服务</dt><dd><span class="badge green">已连接</span></dd><dt>应用版本</dt><dd>${esc(status.version || '1.0.0')}</dd><dt>可用空间</dt><dd>${bytes(status.free_bytes)}</dd><dt>部署方式</dt><dd>Apple Silicon 原生应用 + 本机网页</dd></dl><p class="footnote">核心文件管理无需安装 AI 服务或提供 API Key。系统和依赖的详细检测结果随交付文档提供。</p>`;
+        break;
+    case 2:
+        body = `<p class="muted">选择长期保存原文件实体、版本、SQLite 数据库与索引的位置。</p><div class="field"><label for="setup-root">文件库目录</label><div class="fieldrow"><input id="setup-root" value="${attr(setupData.root || status.root || '')}">${btn('选择目录', 'setup-pick-root', 'folder')}</div><small>建议使用本机磁盘。若选择外置磁盘，请保持连接。</small></div>`;
+        break;
+    case 3:
+        body = `<p class="muted">只有你授权后才会观察目录。下载文件默认进入待确认收件箱，不会擅自归类为 Work。</p><label class="checkfield"><input id="setup-downloads-enabled" type="checkbox" ${setupData.downloads_path ? 'checked' : ''}>启用下载目录监控</label><div class="fieldrow"><input id="setup-downloads" placeholder="未授权任何下载目录" value="${attr(setupData.downloads_path || '')}">${btn('选择目录', 'setup-pick-downloads', 'folder')}</div><p class="footnote">不会修改或删除原下载文件；持续写入、临时文件与符号链接会被跳过。</p>`;
+        break;
+    case 4:
+        body = `<p class="muted">将 Work 成果主动保存到此目录，可以自动进行轻量登记。Work 不会被假定自动保存所有成果到这里。</p><div class="fieldrow"><input id="setup-inbox" placeholder="可留空，稍后在同步中心添加" value="${attr(setupData.inbox_path || '')}">${btn('选择接收目录', 'setup-pick-inbox', 'inbox')}</div><p class="footnote">建议新建 WorkVault-Inbox。若你的 Work 本地任务获得该文件夹写入权限，可以明确要求任务将成果保存至此。</p>`;
+        break;
+    case 5:
+        body = `<p class="intro">本地 AI 完全可选。</p><p class="muted">如已安装 Ollama，可在设置中填写本地模型名称。WorkVault 不会自动下载模型，也不会在启动时加载大型模型。</p><div class="notice">${icon('info')}适合先完成基础文件整理，再按需要配置轻量本地推理与嵌入模型。</div>${btn('检测已安装服务', 'ai-detect', 'refresh')}`;
+        break;
+    case 6:
+        body = '<p class="intro">DeepSeek 默认关闭。</p><p class="muted">如需使用，稍后在设置中配置 API Key、模型、已核实价格和费用预算，再为项目单独授权。每次正文发送前会显示预览。</p><div class="notice warning">' + icon('shield') + 'DeepSeek 是云端服务。调用时经你确认的正文片段会离开本机，并可能产生费用。</div>';
+        break;
+    case 7:
+        body = '<p class="intro">从你现有的成果开始。</p><p class="muted">完成引导后，可导入文件、文件夹、ZIP，或通过官方 ChatGPT 数据导出包读取可获得的真实会话标题与文件元数据。缺失附件会标记为需要补充原文件。</p><p class="footnote">为保证文件库干净，安装过程不会自动扫描你的其他项目和私人目录。</p>';
+        break;
+    case 8:
+        body = `<dl class="kv"><dt>文件库</dt><dd>${esc(setupData.root || status.root)}</dd><dt>下载监控</dt><dd>${esc(setupData.downloads_path || '未开启')}</dd><dt>专用接收目录</dt><dd>${esc(setupData.inbox_path || '稍后添加')}</dd><dt>AI 处理</dt><dd>关闭；由你主动触发</dd><dt>备份</dt><dd>仅手动创建</dd></dl><p class="footnote">ChatGPT 个人账户官方同步接口未验证可用。当前版本通过明确授权的本地目录、手动导入与官方导出接收文件和标题。</p>`;
+        break;
+} $('#app').innerHTML = `<main class="onboard section"><div class="brand" style="padding:0"><div class="brandmark">W</div><div>WorkVault<small>LOCAL WORKSPACE</small></div></div><div class="steps">${names.map((_, i) => `<i class="${i <= onboardStep ? 'done' : ''}"></i>`).join('')}</div><small>首次设置 · ${onboardStep + 1} / ${names.length}</small><h1 style="margin-top:14px">${names[onboardStep]}</h1><div class="stepbody">${body}</div><div class="onboardfoot"><button id="onboard-back" ${onboardStep === 0 ? 'disabled' : ''}>${icon('arrow')} 上一步</button><button id="onboard-next" class="primary">${onboardStep === 8 ? '创建文件库并开始使用' : '继续'} ${icon('chevron')}</button></div></main>`; bindActions($('#app')); $('#onboard-back').onclick = () => { saveSetupStep(); onboardStep--; renderOnboarding(); }; $('#onboard-next').onclick = () => void run(async () => { saveSetupStep(); if (onboardStep < 8) {
+    onboardStep++;
+    renderOnboarding();
+}
+else {
+    if (!setupData.root && !status.root)
+        throw new Error('请选择永久存储目录');
+    $('#onboard-next').disabled = true;
+    await rpc('setup', { ...setupData, root: setupData.root || status.root });
+    toast('本地文件库已就绪');
+    await render();
+} }); for (const [a, id, k] of [['setup-pick-root', 'setup-root', 'root'], ['setup-pick-downloads', 'setup-downloads', 'downloads_path'], ['setup-pick-inbox', 'setup-inbox', 'inbox_path']]) {
+    const n = $(`[data-action=${a}]`);
+    if (n)
+        n.onclick = () => void run(async () => { const p = await pickDirectory(); if (p) {
+            setupData[k] = p;
+            $(`#${id}`).value = p;
+            if (k === 'downloads_path')
+                $('#setup-downloads-enabled').checked = true;
+        } });
+} }
+function saveSetupStep() { if ($('#setup-root'))
+    setupData.root = $('#setup-root').value; if ($('#setup-downloads'))
+    setupData.downloads_path = $('#setup-downloads-enabled').checked ? $('#setup-downloads').value : ''; if ($('#setup-inbox'))
+    setupData.inbox_path = $('#setup-inbox').value; }
+let dragDepth = 0;
+async function entriesFromDrop(dt) { const list = [];  async function walk(e) { if (list.length >= 10000)
+    throw new Error('一次最多拖入 10,000 个文件，请分批导入'); if (e.isFile) {
+    const f = await new Promise(resolve => e.file(resolve, () => resolve(null)));
+    if (f)
+        list.push(f);
+}
+else if (e.isDirectory) {
+    const reader = e.createReader();
+    for (;;) {
+        const entries = await new Promise(resolve => reader.readEntries(resolve, () => resolve([])));
+        if (!entries.length)
+            break;
+        for (const child of entries)
+            await walk(child);
+    }
+} } const items = Array.from(dt.items); for (const item of items) {
+    const e = item.webkitGetAsEntry?.();
+    if (e)
+        await walk(e);
+    else {
+        const f = item.getAsFile();
+        if (f)
+            list.push(f);
+    }
+} return list; }
+document.addEventListener('dragenter', e => { if (!e.dataTransfer?.types.includes('Files'))
+    return; e.preventDefault(); dragDepth++; if (!$('#drop-overlay')) {
+    const n = document.createElement('div');
+    n.id = 'drop-overlay';
+    n.className = 'dropoverlay';
+    n.innerHTML = '<span>' + icon('upload') + ' 松开以导入文件或文件夹</span>';
+    document.body.append(n);
+} });
+document.addEventListener('dragover', e => { if (e.dataTransfer?.types.includes('Files'))
+    e.preventDefault(); });
+document.addEventListener('dragleave', e => { if (!e.dataTransfer?.types.includes('Files'))
+    return; dragDepth--; if (dragDepth <= 0) {
+    $('#drop-overlay')?.remove();
+    dragDepth = 0;
+} });
+document.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; $('#drop-overlay')?.remove(); const dt = e.dataTransfer; if (dt)
+    void run(async () => { const items = await entriesFromDrop(dt); if (items.length) {
+        modal('确认拖拽导入', `<p>已选择 ${items.length} 份文件。</p>${selectField('project_id', '所属项目', projectOptions(), projectID)}<label class="checkfield"><input type="checkbox" name="confirmed" checked>我确认这些文件属于 Work 成果</label><p class="footnote">保留原文件；不会触发 AI 分析。</p>`, btn('取消', 'close') + btn('导入所选文件', 'drop-submit', 'upload', 'primary'));
+        $('[data-action=drop-submit]').onclick = () => void run(() => uploadFiles(items));
+    } }); });
+for (const id of ['upload', 'folder-upload']) {
+    $(`#${id}`).onchange = () => { const n = $(`#${id}`); const f = Array.from(n.files || []); n.value = ''; void run(() => uploadFiles(f)); };
+}
+document.addEventListener('click', e => { if (contextNode && !e.target.closest('.context')) {
+    contextNode.remove();
+    contextNode = null;
+} });
+document.addEventListener('keydown', e => { const dialog = $('.modal'); if (dialog && e.key === 'Tab') {
+    const controls = $$('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]', dialog).filter(n => n.offsetParent !== null);
+    const first = controls[0], last = controls[controls.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last?.focus();
+    }
+    else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first?.focus();
+    }
+} if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    $('#global-search')?.focus();
+} if (e.key === 'Escape') {
+    closeModal();
+    contextNode?.remove();
+} if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+    e.preventDefault();
+    void run(importDialog);
+} });
+matchMedia('(prefers-color-scheme:dark)').addEventListener('change', () => { if (localStorage.getItem('wv-theme') === 'system')
+    setTheme('system'); });
+setTheme(localStorage.getItem('wv-theme') || 'system');
+void render();
+export {};
