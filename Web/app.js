@@ -21,7 +21,7 @@ const sourceLabel = (s) => ({ manual: '手动导入', downloads: '下载目录',
 let pendingConfirmation = null;
 let page = 'dashboard', status = {}, projects = [], categories = [], files = [], total = 0, offset = 0, listMode = localStorage.getItem('wv-list') || 'list', selected = new Set();
 const markdownSearchExtensions = ['md', 'markdown'];
-const fileCenterSearchExtensions = [...markdownSearchExtensions, 'ts', 'js', 'json'];
+const fileCenterSearchExtensions = [...markdownSearchExtensions, 'ts', 'js', 'json', 'tsx', 'jsx', 'css'];
 let finalFilter = { q: '', project_id: '', offset: 0 };
 let deliverableCache = new Map();
 let projectListMode = localStorage.getItem('wv-project-list') || 'grid';
