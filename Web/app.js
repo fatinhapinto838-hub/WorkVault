@@ -20,8 +20,6 @@ const friendlyStatus = (s) => ({ active: '进行中', completed: '已完成', ar
 const sourceLabel = (s) => ({ manual: '手动导入', downloads: '下载目录', dedicated: '专用收件箱', history: '官方导出', export: '官方导出', official_export: '官方导出', manual_link: '用户提供链接', user: '用户输入', manual_upload: '浏览器上传', upload: '浏览器上传', manifest: '用户提供任务清单' }[String(s)] || String(s || '未知来源'));
 let pendingConfirmation = null;
 let page = 'dashboard', status = {}, projects = [], categories = [], files = [], total = 0, offset = 0, listMode = localStorage.getItem('wv-list') || 'list', selected = new Set();
-const markdownSearchExtensions = ['md', 'markdown'];
-const fileCenterSearchExtensions = [...markdownSearchExtensions, 'ts', 'js', 'json', 'tsx', 'jsx', 'css'];
 let finalFilter = { q: '', project_id: '', offset: 0 };
 let deliverableCache = new Map();
 let projectListMode = localStorage.getItem('wv-project-list') || 'grid';
@@ -126,15 +124,95 @@ function safeLink(value) { try {
 catch {
     return '#';
 } }
+function fileSearchExclusionDialog() {
+    const suffixes = new Set(array(status.file_search_exclusions));
+    modal('搜索排除设置', `
+  <p>以下后缀会从文件中心的关键词搜索结果中排除。浏览文件时仍会显示这些格式。</p>
+  <div class="actions" id="excluded-suffixes" aria-label="已排除的文件后缀"></div>
+  <div class="field">
+   <label for="new-excluded-suffix">添加后缀</label>
+   <div class="actions">
+    <input id="new-excluded-suffix" placeholder=".log 或 .log, .tmp" spellcheck="false" autocapitalize="off">
+    ${btn('添加', 'add-excluded-suffix', 'plus')}
+   </div>
+   <small>可用空格或逗号分隔多个后缀。点击后缀旁的 × 可移除。</small>
+   <small id="excluded-suffix-error" role="alert"></small>
+  </div>`, btn('恢复默认', 'restore-default-exclusions') + btn('取消', 'close') + btn('保存', 'save-excluded-suffixes', 'check', 'primary'));
+    const dialog = $('#modal-root');
+    const chips = $('#excluded-suffixes', dialog);
+    const input = $('#new-excluded-suffix', dialog);
+    const error = $('#excluded-suffix-error', dialog);
+    const save = $('[data-action=save-excluded-suffixes]', dialog);
+    const showSuffixes = () => {
+        chips.innerHTML = [...suffixes].map(suffix => `<button type="button" class="small" data-remove-exclusion="${attr(suffix)}" aria-label="取消排除 .${attr(suffix)}">.${esc(suffix)} ×</button>`).join('') || '<span class="muted">未排除任何后缀</span>';
+    };
+    const addSuffixes = () => {
+        const entries = input.value.split(/[\s,，;；、]+/u).filter(Boolean).map(entry => entry.toLowerCase().replace(/^\./, ''));
+        if (entries.some(entry => !/^[a-z0-9][a-z0-9_+-]{0,31}$/.test(entry))) {
+            error.textContent = '请输入文件的最后一段后缀，例如 .log。后缀须以英文字母或数字开头，最多 32 个字符。';
+            input.focus();
+            return false;
+        }
+        const next = new Set([...suffixes, ...entries]);
+        if (next.size > 100) {
+            error.textContent = '最多可设置 100 个搜索排除后缀。';
+            input.focus();
+            return false;
+        }
+        next.forEach(entry => suffixes.add(entry));
+        input.value = '';
+        error.textContent = '';
+        showSuffixes();
+        return true;
+    };
+    chips.onclick = event => {
+        const button = event.target.closest('[data-remove-exclusion]');
+        if (button?.dataset.removeExclusion) {
+            suffixes.delete(button.dataset.removeExclusion);
+            showSuffixes();
+            input.focus();
+        }
+    };
+    input.onkeydown = event => { if (event.key === 'Enter') {
+        event.preventDefault();
+        addSuffixes();
+    } };
+    input.oninput = () => { error.textContent = ''; };
+    $('[data-action=add-excluded-suffix]', dialog).onclick = () => { if (addSuffixes())
+        input.focus(); };
+    $('[data-action=restore-default-exclusions]', dialog).onclick = () => {
+        suffixes.clear();
+        array(status.file_search_default_exclusions).forEach(suffix => suffixes.add(suffix));
+        input.value = '';
+        error.textContent = '';
+        showSuffixes();
+    };
+    save.onclick = () => void run(async () => {
+        if (!addSuffixes())
+            return;
+        save.disabled = true;
+        try {
+            await rpc('settings_save', { values: { file_search_excluded_extensions: [...suffixes] } });
+            closeModal();
+            offset = 0;
+            toast('搜索排除设置已保存');
+            await render();
+        }
+        finally {
+            save.disabled = false;
+        }
+    });
+    showSuffixes();
+}
 async function filesPage() {
     const pending = page === 'inbox', trash = page === 'trash', fileCenter = !pending && !trash;
-    const excludedExtensions = fileCenter ? fileCenterSearchExtensions : markdownSearchExtensions;
+    const excludedExtensions = fileCenter ? array(status.file_search_exclusions) : ['md', 'markdown'];
     if (String(filter.q).trim() && excludedExtensions.includes(String(filter.ext).toLowerCase()))
         filter.ext = '';
     const r = await rpc('files', { ...filter, status: pending ? 'pending' : trash ? 'trash' : 'managed', search_context: fileCenter ? 'file_center' : null, limit: 40, offset });
     files = array(r.items);
     total = Number(r.total) || 0;
-    return `<div class="pagehead"><div><h1>${pending ? '待确认收件箱' : trash ? '回收站' : '文件中心'}</h1><p>${pending ? '确认文件来源与项目归属，让档案保持清晰可靠。' : trash ? '误删文件可以恢复。此处操作仅影响本地 WorkVault 档案。' : '预览、检索和管理你的全部 Work 成果。'}</p></div><div class="actions">${!trash ? btn('检查外部编辑', 'check-edits', 'refresh') : ''}${!trash ? btn('导入文件', 'import', 'upload', 'primary') : ''}</div></div>${pending && status.pending_projects ? `<div class="notice warning">${icon('info')}另有 ${status.pending_projects} 个官方导出会话无法区分 Chat / Work。请在项目中心打开候选项目，确认属于 Work 后纳入正式档案。${btn('查看候选项目', 'goto-projects', 'folder', 'small')}</div>` : ''}${pending ? '<div class="notice">' + icon('info') + '下载目录中的文件不会被自动认定为 Work 成果。请选择文件，确认属于 Work 后再关联项目。</div>' : ''}<div class="toolbar"><input id="file-q" placeholder="搜索文件名、项目名或标签…" value="${attr(filter.q)}"><select id="file-project">${projectOptions('全部项目').map(([v, l]) => `<option value="${attr(v)}" ${v === filter.project_id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><select id="file-ext"><option value="">全部格式</option>${['pdf', 'docx', 'xlsx', 'pptx', 'md', 'txt', 'csv', 'json', 'py', 'png', 'jpg', 'webp', 'zip'].map(x => `<option value="${x}" ${r.search_excludes_markdown && excludedExtensions.includes(x) ? 'disabled' : ''} ${x === filter.ext ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}</select><select id="file-sort">${[['newest', '最近更新'], ['oldest', '最早更新'], ['name', '文件名称'], ['size', '文件大小']].map(([v, l]) => `<option value="${v}" ${filter.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button id="favorite-filter" class="${filter.favorite ? 'primary' : ''}" title="仅收藏">${icon('star')}</button><div class="segmented"><button data-action="view-list" class="${listMode === 'list' ? 'active' : ''}" title="列表视图">${icon('list')}</button><button data-action="view-grid" class="${listMode === 'grid' ? 'active' : ''}" title="网格视图">${icon('grid')}</button></div></div><div id="selection-bar"></div>${r.search_excludes_markdown ? `<p class="footnote" data-search-excludes-md>关键词搜索已排除 ${excludedExtensions.map(ext => '.' + ext).join('、')}。清除关键词后可正常浏览。</p>` : ''}<section class="section">${files.length ? (listMode === 'grid' ? fileGrid(files) : fileRows(files, true)) : empty(filter.q ? '没有找到相关文件' : pending ? '收件箱已清空' : trash ? '回收站为空' : '文件库等待你的第一份成果', filter.q ? '尝试其他关键词或清除筛选条件。' : pending ? '新发现但来源不明的文件会在这里等待确认。' : '拖拽文件或文件夹到此窗口，或使用导入按钮。', !pending && !trash && !filter.q ? 'import' : '')}<div class="pager"><span>共 ${total} 份文件${total ? ` · 第 ${Math.floor(offset / 40) + 1} / ${Math.ceil(total / 40)} 页` : ''}</span><div class="actions"><button data-action="prev" ${offset === 0 ? 'disabled' : ''}>上一页</button><button data-action="next" ${offset + 40 >= total ? 'disabled' : ''}>下一页</button></div></div></section>`;
+    return `<div class="pagehead"><div><h1>${pending ? '待确认收件箱' : trash ? '回收站' : '文件中心'}</h1><p>${pending ? '确认文件来源与项目归属，让档案保持清晰可靠。' : trash ? '误删文件可以恢复。此处操作仅影响本地 WorkVault 档案。' : '预览、检索和管理你的全部 Work 成果。'}</p></div><div class="actions">${!trash ? btn('检查外部编辑', 'check-edits', 'refresh') : ''}${!trash ? btn('导入文件', 'import', 'upload', 'primary') : ''}</div></div>${pending && status.pending_projects ? `<div class="notice warning">${icon('info')}另有 ${status.pending_projects} 个官方导出会话无法区分 Chat / Work。请在项目中心打开候选项目，确认属于 Work 后纳入正式档案。${btn('查看候选项目', 'goto-projects', 'folder', 'small')}</div>` : ''}${pending ? '<div class="notice">' + icon('info') + '下载目录中的文件不会被自动认定为 Work 成果。请选择文件，确认属于 Work 后再关联项目。</div>' : ''}<div class="toolbar"><input id="file-q" placeholder="搜索文件名、项目名或标签…" value="${attr(filter.q)}">${fileCenter ? btn('搜索排除', 'file-search-exclusions', 'settings', 'small') : ''}<select id="file-project">${projectOptions('全部项目').map(([v, l]) => `<option value="${attr(v)}" ${v === filter.project_id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><select id="file-ext"><option value="">全部格式</option>${['pdf', 'docx', 'xlsx', 'pptx', 'md', 'txt', 'csv', 'json', 'py', 'png', 'jpg', 'webp', 'zip'].map(x => `<option value="${x}" ${filter.q && excludedExtensions.includes(x) ? 'disabled' : ''} ${x === filter.ext ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}</select><select id="file-sort">${[['newest', '最近更新'], ['oldest', '最早更新'], ['name', '文件名称'], ['size', '文件大小']].map(([v, l]) => `<option value="${v}" ${filter.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button id="favorite-filter" class="${filter.favorite ? 'primary' : ''}" title="仅收藏">${icon('star')}</button><div class="segmented"><button data-action="view-list" class="${listMode === 'list' ? 'active' : ''}" title="列表视图">${icon('list')}</button><button data-action="view-grid" class="${listMode === 'grid' ? 'active' : ''}" title="网格视图">${icon('grid')}</button></div></div><div id="selection-bar"></div>${array(r.search_excluded_extensions).length ? `<p class="footnote" data-search-excluded-extensions>关键词搜索已排除 ${array(r.search_excluded_extensions).map(ext => '.' + esc(ext)).join('、')}。清除关键词后可正常浏览。</p>` : ''}<section class="section">${files.length ? (listMode === 'grid' ? fileGrid(files) : fileRows(files, true)) : empty(filter.q ? '没有找到相关文件' : pending ? '收件箱已清空' : trash ? '回收站为空' : '文件库等待你的第一份成果', filter.q ? '尝试其他关键词或清除筛选条件。' : pending ? '新发现但来源不明的文件会在这里等待确认。' : '拖拽文件或文件夹到此窗口，或使用导入按钮。', !pending && !trash && !filter.q ? 'import' : '')}<div class="pager"><span>共 ${total} 份文件${total ? ` · 第 ${Math.floor(offset / 40) + 1} / ${Math.ceil(total / 40)} 页` : ''}</span><div class="actions"><button data-action="prev" ${offset === 0 ? 'disabled' : ''}>上一页</button><button data-action="next" ${offset + 40 >= total ? 'disabled' : ''}>下一页</button></div></div></section>`;
 }
 async function sourcesPage() { const d = await rpc('sources'); return `<div class="pagehead"><div><h1>同步与接收中心</h1><p>只观察你授权的目录，原始文件始终保留。</p></div><div class="actions">${btn('历史数据导入', 'history', 'book')}${btn('添加接收目录', 'add-source', 'plus')}${btn('扫描授权目录', 'scan', 'sync', 'primary')}</div></div><div class="notice">${icon('shield')}ChatGPT 个人账户的 Work 任务与文件公开授权接口当前未验证可用。下方状态只表示本地文件接收，不表示已连接 ChatGPT 账号。</div><section class="section"><h2>文件来源</h2><div class="sourcecard"><span class="foldericon">${icon('lock')}</span><div class="sourcebody"><h3>ChatGPT 官方账户接口 <span class="badge gray">当前不可用</span></h3><p>不会读取登录 Cookie、应用私有数据库或浏览器凭据。</p><p>替代方式：保存成果至专用目录、拖拽导入，或通过官方导出包获取任务标题。</p></div></div>${array(d.items).map(s => `<div class="sourcecard"><span class="foldericon">${icon(s.kind === 'downloads' ? 'download' : 'inbox')}</span><div class="sourcebody"><h3>${s.kind === 'downloads' ? '下载目录 · 待确认来源' : 'Work 专用接收目录'} <span class="badge ${s.enabled ? 'green' : 'gray'}">${s.enabled ? '监控已启用' : '已暂停'}</span></h3><p>${esc(s.path)}</p><p>最近扫描：${time(s.last_scan)}${s.error ? ' · ' + esc(s.error) : ''}</p></div><button class="small" data-source-toggle="${attr(s.id)}" data-enabled="${s.enabled ? '0' : '1'}">${s.enabled ? '暂停' : '启用'}</button><button class="small danger" data-source-delete="${attr(s.id)}">移除</button></div>`).join('')}${!array(d.items).length ? empty('还没有启用目录监控', '添加一个明确授权的目录。系统只登记稳定文件，忽略临时下载与符号链接。', 'add-source', '添加目录', 'folder') : ''}</section><div class="twocol"><section class="section"><h2>接收日志</h2><div class="loglist">${activity(array(d.logs))}</div></section><section class="section"><h2>可靠的标题关联</h2><p class="muted" style="font-size:12px">使用官方导出中的会话标题，或主动粘贴 Work 标题和链接。仅凭文件名推测的标题不会被当作原始任务标题。</p>${btn('新建关联项目', 'new-project', 'link')}${btn('导入官方导出包', 'history', 'book')}</section></div><section class="section"><div class="sectionhead"><h2>导入任务</h2>${btn('刷新任务', 'import-jobs', 'refresh', 'small')}</div><div id="import-jobs">${await importJobsHTML()}</div></section>`; }
 async function importJobsHTML() { try {
@@ -210,6 +288,9 @@ async function action(a, _node) { if (a.startsWith('goto-')) {
         break;
     case 'reload':
         await render();
+        break;
+    case 'file-search-exclusions':
+        fileSearchExclusionDialog();
         break;
     case 'final-pick':
         await finalPicker(page === 'project' ? projectID : String(finalFilter.project_id || ''));
