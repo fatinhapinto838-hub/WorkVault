@@ -1,0 +1,52 @@
+name: Publish WorkVault history once
+on:
+  push:
+    branches: [publish-staging]
+    paths: ['.github/workflows/publish-once.yml']
+permissions:
+  contents: write
+concurrency: workvault-history-publication
+jobs:
+  publish:
+    if: github.repository == 'fatinhapinto838-hub/WorkVault'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify and publish three batches
+        run: |
+          set -euo pipefail
+          git clone --no-tags --single-branch --branch publish-staging "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" staging
+          cd staging
+          git checkout --detach "$GITHUB_SHA"
+          echo "e9568be1b3753f8a79b062f275084b15d01fee2de87e00cb05e996558e194c8d  workvault-publish.zip" | sha256sum --check
+          unzip -q workvault-publish.zip -d ../payload
+          git bundle verify ../payload/workvault.bundle
+          git fetch ../payload/workvault.bundle refs/heads/main:refs/remotes/payload/main 'refs/tags/*:refs/tags/*'
+          git fsck --strict
+          gh auth setup-git
+          for group in "1.0.0 1.1.0" "1.2.0 1.2.1 1.2.2 1.2.3" "1.2.4 1.2.5 1.2.6 1.3.0"; do
+            read -r -a versions <<< "$group"
+            last="${versions[-1]}"
+            remote_main=$(git ls-remote origin refs/heads/main | cut -f1)
+            refs=()
+            if ! git merge-base --is-ancestor "v$last" "$remote_main"; then
+              refs+=("refs/tags/v$last:refs/heads/main")
+            fi
+            for version in "${versions[@]}"; do
+              refs+=("refs/tags/v$version:refs/tags/v$version")
+              (cd "../payload/$version" && sha256sum --check SHA256SUMS.txt)
+            done
+            git push --atomic origin "${refs[@]}"
+            for version in "${versions[@]}"; do
+              folder="../payload/$version"
+              latest=false
+              if [[ "$version" == 1.3.0 ]]; then latest=true; fi
+              if ! gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+                gh release create "v$version" "$folder/WorkVault-$version-arm64.zip" "$folder/SHA256SUMS.txt" --repo "$GITHUB_REPOSITORY" --verify-tag --title "WorkVault $version" --notes-file "$folder/RELEASE_NOTES.md" --latest="$latest"
+              fi
+              gh release view "v$version" --repo "$GITHUB_REPOSITORY" --json assets,isDraft --jq '(.isDraft == false) and (.assets | length == 2)' | grep -x true
+            done
+          done
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$(git rev-parse v1.3.0)"
