@@ -2,6 +2,8 @@
 
 本地运行的 ChatGPT Work 成果管理中心。Apple Silicon 原生 Swift 应用 + 离线中文网页界面 + SQLite，文件和历史版本永久保存在自选本地目录。基础管理没有服务器、云数据库、订阅或 AI 依赖。
 
+当前版本 **1.1.0** 新增独立的「最终成果」栏目，按项目固定交付版本，可预览、打开、导出、添加和移出，复用原文件实体。详见 [最终成果使用说明](docs/FINAL_DELIVERABLES.md)。
+
 ## 使用
 
 双击 **Install.command** 安装至用户 Applications 并启动；日常打开 **WorkVault.app** 或 **Launch.command**。首次完成九步引导，默认库建议 `~/Documents/WorkVault`。下载监控、登录启动、本地 AI 和 DeepSeek 均默认关闭。
@@ -36,4 +38,4 @@ scripts/build.sh
 
 源码：Sources / Web，发布 app：dist。无第三方运行库。TS开发工具固定5.9.3，strict检查；发布JS已经生成。CLT重复模块问题仅用工程内VFS配置处理，不改系统。
 
-测试：Tests/integration.py、Tests/AITests.swift、Tests/ui-smoke.mjs、Tests/benchmark.py。全部隔离测试，不给用户库灌入合成数据。
+测试：Tests/deliverables.py、Tests/final-ui-smoke.mjs、Tests/integration.py、Tests/AITests.swift、Tests/ui-smoke.mjs、Tests/benchmark.py。全部隔离测试，不给用户库灌入合成数据。

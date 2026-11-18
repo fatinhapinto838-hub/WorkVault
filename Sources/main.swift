@@ -96,7 +96,7 @@ final class AppDelegate:NSObject,NSApplicationDelegate,WKNavigationDelegate,WKUI
         let seconds=max(5,min(3600,raw.isFinite ? raw:15))
         timer?.schedule(deadline:.now()+seconds,repeating:seconds,leeway:.seconds(2))
     }
-    @objc func about(){let alert=NSAlert();alert.messageText="WorkVault 1.0.0";alert.informativeText="本地成果管理中心 · Apple Silicon\n原始文件与数据库保存在本机。AI 仅主动触发。\n此构建为本机 ad-hoc 签名，未经 Apple 公证。";alert.runModal()}
+    @objc func about(){let alert=NSAlert();alert.messageText="WorkVault 1.1.0";alert.informativeText="本地成果管理中心 · Apple Silicon\n原始文件与数据库保存在本机。AI 仅主动触发。\n此构建为本机 ad-hoc 签名，未经 Apple 公证。";alert.runModal()}
     @objc func openBrowser(){if let url=server?.entryURL{NSWorkspace.shared.open(url)}}
     func applicationShouldTerminateAfterLastWindowClosed(_ sender:NSApplication)->Bool{true}
     func applicationWillTerminate(_ n:Notification){timer?.cancel();ai?.stop();server?.stop();if rootFD>=0{flock(rootFD,LOCK_UN);Darwin.close(rootFD)};if let ready=argument("--ready-file"){try? FileManager.default.removeItem(atPath:ready)}}

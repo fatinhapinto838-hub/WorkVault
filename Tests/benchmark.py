@@ -22,7 +22,7 @@ cache = os.environ.get('WORKVAULT_MODULE_CACHE', str(build / 'module-cache'))
 executable = build / 'WorkVaultBenchmark'
 subprocess.run(['/usr/bin/swiftc', '-O', *extra, '-module-cache-path', cache,
     '-I', str(project / 'CSQLite'), str(project / 'Sources/DB.swift'),
-    str(project / 'Sources/Store.swift'), str(project / 'Tests/Benchmark.swift'),
+    str(project / 'Sources/Store.swift'), str(project / 'Sources/Deliverables.swift'), str(project / 'Tests/Benchmark.swift'),
     '-o', str(executable)], cwd=project, check=True)
 result = subprocess.run([str(executable)], cwd=project, capture_output=True, text=True, check=True)
 parsed = json.loads(result.stdout)

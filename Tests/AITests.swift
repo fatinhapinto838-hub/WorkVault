@@ -20,6 +20,13 @@ struct AITests {
             let valid = AIEngine.accountedCost(usage:["prompt_tokens":1000,"completion_tokens":500],inputPrice:2,outputPrice:3,reserved:0.42)
             try expect(valid.complete && abs(valid.cost-0.0035)<0.0000001,"Valid usage not accounted")
         }
+        try test("AI status returns metadata without requesting secret access") {
+            let started=Date()
+            let status=try ai.rpc(["action":"ai_status"])!
+            try expect(status["key_access_deferred"] is Bool,"Missing deferred-access state")
+            try expect(Date().timeIntervalSince(started)<10,"Status blocked on credential interaction")
+            try expect((status["requests"] as? [[String:Any]] ?? []).isEmpty,"Status invoked paid AI")
+        }
         let p = try store.rpc(["action":"project_save","title":"AI 隔离测试"])["project"] as! [String:Any], project = p["id"] as! String
         let path = base.appendingPathComponent("资料.md")
         try "# CCUS 研究\n碳封存需要评价储层孔隙度和渗透率。资料明确记录二氧化碳驱油实验。\n本文件仅用于隔离自动化测试。".write(to:path,atomically:true,encoding:.utf8)

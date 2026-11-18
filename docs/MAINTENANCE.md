@@ -13,3 +13,6 @@ Tests/integration.py 调用真实打包二进制并创建隔离测试库；Tests
 数据库变更递增 schema_migrations，设计前向兼容和备份恢复测试，不直接修改用户 blobs。版本化 blob 是不可变实体，外部编辑只能用工作副本。不要引入自动正文处理、未经授权外部请求、自动备份或默认登录启动。
 
 手动更新：退出应用，运行新交付目录 Install.command，旧 app 会保留副本；个人库保持不变。没有自动在线更新机制。问题排查优先查看设置日志与完整性检查；日志不要添加 Key 或全文请求正文。
+
+
+1.1.0 引入 schema 4 最终成果关系。编译时需包含 Sources/Deliverables.swift；新增 `Tests/deliverables.py` 和 `Tests/final-ui-smoke.mjs`。不要用 1.0.0 打开升级后的库。发布工具现在生成 1.1.0 源码包。

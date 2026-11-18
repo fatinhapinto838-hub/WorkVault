@@ -31,3 +31,8 @@ DeepSeek 按官方 Chat Completions 协议使用 HTTPS；每个相关项目授�
 ## 扩展与维护
 
 RPC 合约在 API_CONTRACT.md，源码按 DB/Store/AIEngine/HTTPServer/main 与 Web 划分。修改 schema 需要递增迁移并验证旧库；保留用户库与程序目录分离。公开官方账户接口未来可用时才增加真正的适配器，不能将本地扫描标为账户同步。
+
+
+## Schema 4：项目最终成果
+
+`project_deliverables` 以项目、文件、版本为复合主键，并通过复合外键依赖 `file_projects`，引用不可变 `versions`。收录不复制 blob；同文件可在不同项目固定不同版本。合并/拆分保留收录，删除项目关联级联删除相应收录。API `deliverables` 分页项目或文件；`deliverable_set/remove/projects` 管理关系并记录事件。旧 final 标记作为兼容汇总字段，不再代替项目级收录。

@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 import Security
 import PDFKit
 
@@ -120,6 +121,15 @@ final class AIEngine {
         var get = query; get[kSecReturnData as String] = true; get[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?; let status = SecItemCopyMatching(get as CFDictionary,&result)
         if status == errSecItemNotFound { return nil }; guard status == errSecSuccess, let data = result as? Data else { throw AIError("Keychain 访问失败（\(status)）") }; return String(data:data,encoding:.utf8)
+    }
+    private func keychainPresence() -> (configured:Bool,deferred:Bool) {
+        // A status page must not retrieve the secret or wait for a Keychain
+        // authorization dialog after an unsigned/local application update.
+        let context=LAContext();context.interactionNotAllowed=true
+        let query:[String:Any]=[kSecClass as String:kSecClassGenericPassword,kSecAttrService as String:"local.workvault.deepseek",kSecAttrAccount as String:"api-key",kSecMatchLimit as String:kSecMatchLimitOne,kSecReturnAttributes as String:true,kSecUseAuthenticationContext as String:context]
+        var result:CFTypeRef?
+        let status=SecItemCopyMatching(query as CFDictionary,&result)
+        return (status == errSecSuccess,status != errSecSuccess && status != errSecItemNotFound)
     }
     private func selectFiles(_ p: [String:Any]) throws -> [AIFile] {
         var ids = p["file_ids"] as? [String] ?? []
@@ -396,8 +406,8 @@ final class AIEngine {
             let s = try settings(); let models = try? localModels(s)
             let requests = try db { try store.db.query("SELECT id,provider,model,created_at,status,input_tokens,output_tokens,estimated_cost,error FROM ai_requests ORDER BY created_at DESC LIMIT 50",[]) }
             let count = try db { try store.db.query("SELECT COUNT(*) AS n FROM ai_chunks",[]) }.first?["n"] ?? 0
-            let configured = (try? keychain()) != nil
-            return ["ollama_available":models != nil,"models":models ?? [],"key_configured":configured,"indexed_chunks":count,"requests":requests,"cloud_default":"denied","note":"模型按需加载；未配置 AI 时所有基础文件功能可用。"]
+            let presence = keychainPresence()
+            return ["ollama_available":models != nil,"models":models ?? [],"key_configured":presence.configured,"key_access_deferred":presence.deferred,"indexed_chunks":count,"requests":requests,"cloud_default":"denied","note":presence.deferred ? "Keychain 状态暂不可访问；仅在用户主动配置或调用时请求凭据权限。基础文件功能不受影响。" : "模型按需加载；未配置 AI 时所有基础文件功能可用。"]
         case "ai_key":
             let key = string(p["key"]).trimmingCharacters(in:.whitespacesAndNewlines)
             if key.isEmpty { _ = try keychain(delete:true) } else { _ = try keychain(key) }; return ["saved":true]

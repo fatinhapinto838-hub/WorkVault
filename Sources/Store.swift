@@ -19,10 +19,10 @@ final class Store {
         if FileManager.default.fileExists(atPath:databaseURL.path) {
             let prior=try DB(databaseURL,readOnly:true)
             let userVersion=try prior.query("PRAGMA user_version").first?["user_version"] as? Int ?? 0
-            guard userVersion<=3 else { throw fail("文件库来自更新版本，当前应用不能打开") }
+            guard userVersion<=4 else { throw fail("文件库来自更新版本，当前应用不能打开") }
             if !(try prior.query("SELECT name FROM sqlite_master WHERE name='schema_migrations'")).isEmpty {
                 let version=try prior.query("SELECT max(version) version FROM schema_migrations").first?["version"] as? Int ?? 0
-                guard version<=3 else { throw fail("文件库结构较新，当前应用不会修改该数据库") }
+                guard version<=4 else { throw fail("文件库结构较新，当前应用不会修改该数据库") }
             }
             try prior.close()
         }
@@ -43,6 +43,11 @@ final class Store {
         "CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY,name TEXT NOT NULL,ext TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('managed','pending','trash')),favorite INTEGER NOT NULL DEFAULT 0,final INTEGER NOT NULL DEFAULT 0,tags TEXT NOT NULL DEFAULT '[]',current_version TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS versions(id TEXT PRIMARY KEY,file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,hash TEXT NOT NULL REFERENCES blobs(hash),size INTEGER NOT NULL,created_at TEXT NOT NULL,source TEXT NOT NULL,note TEXT NOT NULL DEFAULT '',is_final INTEGER NOT NULL DEFAULT 0)",
         "CREATE TABLE IF NOT EXISTS file_projects(file_id TEXT NOT NULL REFERENCES files(id) ON DELETE CASCADE,project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,PRIMARY KEY(file_id,project_id))",
+        "CREATE TABLE IF NOT EXISTS project_deliverables(project_id TEXT NOT NULL,file_id TEXT NOT NULL,version_id TEXT NOT NULL REFERENCES versions(id) ON DELETE CASCADE,display_name TEXT NOT NULL,evidence_source TEXT NOT NULL,evidence_note TEXT NOT NULL DEFAULT '',source_path TEXT,selected_at TEXT NOT NULL,PRIMARY KEY(project_id,file_id,version_id),FOREIGN KEY(file_id,project_id) REFERENCES file_projects(file_id,project_id) ON DELETE CASCADE)",
+        "CREATE INDEX IF NOT EXISTS deliverables_project ON project_deliverables(project_id,selected_at DESC)",
+        "CREATE INDEX IF NOT EXISTS deliverables_file ON project_deliverables(file_id,version_id)",
+        "CREATE INDEX IF NOT EXISTS versions_hash ON versions(hash)",
+        "CREATE INDEX IF NOT EXISTS files_current_version ON files(current_version)",
         "CREATE TABLE IF NOT EXISTS provenance(id TEXT PRIMARY KEY,file_id TEXT REFERENCES files(id),source TEXT NOT NULL,source_path TEXT,original_name TEXT,confidence TEXT NOT NULL,imported_at TEXT NOT NULL,task_title TEXT,status TEXT NOT NULL,error TEXT)",
         "CREATE TABLE IF NOT EXISTS categories(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,position INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,path TEXT NOT NULL UNIQUE,kind TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,last_scan TEXT,error TEXT)",
@@ -66,7 +71,14 @@ final class Store {
         try db.transaction { for s in statements { try db.exec(s) }; try db.exec("INSERT OR IGNORE INTO schema_migrations VALUES(1,?)",[now()]) }
         if !(try db.query("PRAGMA table_info(projects)")).contains(where: { $0["name"] as? String == "source_confirmed" }) { try db.exec("ALTER TABLE projects ADD COLUMN source_confirmed INTEGER NOT NULL DEFAULT 1") }; try db.exec("INSERT OR IGNORE INTO schema_migrations VALUES(2,?)",[now()]); try db.exec("INSERT OR IGNORE INTO schema_migrations VALUES(3,?)",[now()])
         try db.exec("INSERT OR IGNORE INTO project_sources(id,project_id,conversation_id,title,title_source,source_url,obtained_at,confidence) SELECT id,id,conversation_id,original_title,title_source,source_url,title_obtained_at,CASE WHEN source_confirmed=1 THEN '用户确认' ELSE '待确认' END FROM projects p WHERE NOT EXISTS(SELECT 1 FROM project_sources ps WHERE ps.project_id=p.id)")
-        try db.exec("PRAGMA user_version=3")
+        if try db.query("SELECT version FROM schema_migrations WHERE version=4").isEmpty {
+            try db.transaction {
+                // Preserve explicit legacy final markers; never infer a final from its filename.
+                try db.exec("INSERT OR IGNORE INTO project_deliverables(project_id,file_id,version_id,display_name,evidence_source,evidence_note,selected_at) SELECT r.project_id,f.id,coalesce((SELECT v.id FROM versions v WHERE v.file_id=f.id AND v.is_final=1 ORDER BY v.created_at DESC,v.rowid DESC LIMIT 1),f.current_version),f.name,'legacy_final','迁移已有最终成果标记',? FROM files f JOIN file_projects r ON r.file_id=f.id WHERE f.status='managed' AND f.final=1",[now()])
+                try db.exec("INSERT INTO schema_migrations VALUES(4,?)",[now()])
+            }
+        }
+        try db.exec("PRAGMA user_version=4")
         if try db.query("SELECT id FROM categories LIMIT 1").isEmpty {
             for (i,n) in ["石油工程","CCUS 与碳封存","科研文献","考研学习","职业规划","行业研究","AI 与软件开发","其他项目","未分类"].enumerated() { try db.exec("INSERT INTO categories VALUES(?,?,?)",[uuid(),n,i]) }
         }
@@ -88,7 +100,7 @@ final class Store {
         return row
     }
     func project(_ id:String) throws -> [String:Any] {
-        guard var row=try db.query("SELECT p.*,(SELECT count(*) FROM file_projects r JOIN files f ON f.id=r.file_id WHERE r.project_id=p.id AND f.status<>'trash') file_count FROM projects p WHERE id=?",[id]).first else { throw fail("项目不存在") }
+        guard var row=try db.query("SELECT p.*,(SELECT count(*) FROM file_projects r JOIN files f ON f.id=r.file_id WHERE r.project_id=p.id AND f.status<>'trash') file_count,(SELECT count(*) FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=p.id AND f.status='managed') deliverable_count FROM projects p WHERE id=?",[id]).first else { throw fail("项目不存在") }
         row["tags"]=jsonValue(row["tags"] as? String ?? "[]") ?? []
         return row
     }
@@ -185,13 +197,21 @@ final class Store {
         if let id=p["project_id"] as? String,!id.isEmpty { whereSQL.append("EXISTS(SELECT 1 FROM file_projects r WHERE r.file_id=f.id AND r.project_id=?)"); args.append(id) }
         if let ext=p["ext"] as? String,!ext.isEmpty { whereSQL.append("f.ext=?"); args.append(ext.lowercased()) }
         if (p["favorite"] as? Bool) == true { whereSQL.append("f.favorite=1") }
+        if (p["final"] as? Bool) == true {
+            if let projectID=p["project_id"] as? String,!projectID.isEmpty { whereSQL.append("EXISTS(SELECT 1 FROM project_deliverables d WHERE d.file_id=f.id AND d.project_id=?)"); args.append(projectID) }
+            else { whereSQL.append("EXISTS(SELECT 1 FROM project_deliverables d WHERE d.file_id=f.id)") }
+        }
         if let tag=p["tag"] as? String,!tag.isEmpty { whereSQL.append("EXISTS(SELECT 1 FROM json_each(f.tags) WHERE value=?)"); args.append(tag) }
         let whereText=whereSQL.joined(separator:" AND ")
         let count=try db.query("SELECT count(*) n FROM files f WHERE \(whereText)",args).first?["n"] ?? 0
         let sort=["name":"f.name COLLATE NOCASE","newest":"f.updated_at DESC,f.id","oldest":"f.created_at,f.id","size":"v.size DESC,f.id"][p["sort"] as? String ?? "newest"] ?? "f.updated_at DESC,f.id"
         let limit=max(1,min(500,p["limit"] as? Int ?? 100)); let offset=max(0,p["offset"] as? Int ?? 0)
         let ids=try db.query("SELECT f.id FROM files f LEFT JOIN versions v ON v.id=f.current_version WHERE \(whereText) ORDER BY \(sort) LIMIT ? OFFSET ?",args+[limit,offset])
-        return ["items":try ids.map{try file($0["id"] as! String)},"total":count]
+        return ["items":try ids.map{ row -> [String:Any] in
+            var f=try file(row["id"] as! String)
+            if let projectID=p["project_id"] as? String,!projectID.isEmpty { f["final"]=try db.query("SELECT 1 FROM project_deliverables WHERE file_id=? AND project_id=? LIMIT 1",[f["id"],projectID]).isEmpty ? 0 : 1 }
+            return f
+        },"total":count]
     }
     private func saveProject(_ p:[String:Any]) throws -> [String:Any] { try db.transaction { try saveProjectImpl(p) } }
     private func saveProjectImpl(_ p:[String:Any]) throws -> [String:Any] {
@@ -249,16 +269,20 @@ final class Store {
             let id=try required(p,"id"); let files=try listFiles(["project_id":id,"limit":500]); return ["project":try project(id),"files":files["items"] ?? [],"events":try db.query("SELECT * FROM events WHERE project_id=? ORDER BY created_at DESC LIMIT 200",[id]),"sources":try db.query("SELECT * FROM project_sources WHERE project_id=? ORDER BY obtained_at",[id]),"missing_attachments":try db.query("SELECT * FROM missing_attachments WHERE project_id=?",[id])]
         case "project_merge":
             let from=try required(p,"from_id"),to=try required(p,"to_id"); guard from != to else { throw fail("不能合并同一项目") }; _ = try project(from); _ = try project(to)
-            try db.transaction { try db.exec("INSERT OR IGNORE INTO file_projects SELECT file_id,? FROM file_projects WHERE project_id=?",[to,from]); try db.exec("UPDATE events SET project_id=? WHERE project_id=?",[to,from]); try db.exec("UPDATE missing_attachments SET project_id=? WHERE project_id=?",[to,from]); try db.exec("UPDATE project_sources SET project_id=? WHERE project_id=?",[to,from]); try db.exec("DELETE FROM projects WHERE id=?",[from]); try event("merge","手动合并项目 \(from)",project:to) }; return ["project":try project(to)]
+            try db.transaction { try db.exec("INSERT OR IGNORE INTO file_projects SELECT file_id,? FROM file_projects WHERE project_id=?",[to,from]); try db.exec("INSERT OR IGNORE INTO project_deliverables SELECT ?,file_id,version_id,display_name,evidence_source,evidence_note,source_path,selected_at FROM project_deliverables WHERE project_id=?",[to,from]); try db.exec("UPDATE events SET project_id=? WHERE project_id=?",[to,from]); try db.exec("UPDATE missing_attachments SET project_id=? WHERE project_id=?",[to,from]); try db.exec("UPDATE project_sources SET project_id=? WHERE project_id=?",[to,from]); try db.exec("DELETE FROM projects WHERE id=?",[from]); try event("merge","手动合并项目 \(from)",project:to) }; return ["project":try project(to)]
         case "project_split":
             let from=try required(p,"id"),title=try required(p,"title"); _ = try project(from); let ids=p["file_ids"] as? [String] ?? []
             return try db.transaction { let result=try saveProject(["title":title,"title_source":"用户拆分"]); let target=(result["project"] as! [String:Any])["id"] as! String
-                for id in ids { guard !(try db.query("SELECT * FROM file_projects WHERE file_id=? AND project_id=?",[id,from])).isEmpty else { throw fail("所选文件不属于原项目") }; try db.exec("DELETE FROM file_projects WHERE file_id=? AND project_id=?",[id,from]); try db.exec("INSERT INTO file_projects VALUES(?,?)",[id,target]) }; try event("split","从项目 \(from) 拆分",project:target); return result }
+                for id in ids { guard !(try db.query("SELECT * FROM file_projects WHERE file_id=? AND project_id=?",[id,from])).isEmpty else { throw fail("所选文件不属于原项目") }; try db.exec("INSERT INTO file_projects VALUES(?,?)",[id,target]); try db.exec("INSERT INTO project_deliverables SELECT ?,file_id,version_id,display_name,evidence_source,evidence_note,source_path,selected_at FROM project_deliverables WHERE file_id=? AND project_id=?",[target,id,from]); try db.exec("DELETE FROM file_projects WHERE file_id=? AND project_id=?",[id,from]) }; try event("split","从项目 \(from) 拆分",project:target); return result }
         case "project_delete":
             let id=try required(p,"id"); guard try db.query("SELECT file_id FROM file_projects WHERE project_id=? LIMIT 1",[id]).isEmpty else { throw fail("请先移出项目文件，再删除空项目") }; try db.transaction { try db.exec("DELETE FROM missing_attachments WHERE project_id=?",[id]); try db.exec("DELETE FROM project_sources WHERE project_id=?",[id]); try db.exec("DELETE FROM projects WHERE id=?",[id]) }; return ["ok":true]
+        case "deliverables": return try listDeliverables(p)
+        case "deliverable_set": return try selectDeliverables(p)
+        case "deliverable_remove": return try removeDeliverable(p)
+        case "deliverable_projects": return ["items":try deliverableRows(fileID:try required(p,"file_id"))]
         case "files": return try listFiles(p)
         case "file_detail":
-            let id=try required(p,"id"); let f=try file(id); let versions=try db.query("SELECT *,CASE WHEN id=? THEN 1 ELSE 0 END is_current FROM versions WHERE file_id=? ORDER BY created_at DESC,rowid DESC",[f["current_version"],id]); return ["file":f,"versions":versions,"provenance":try db.query("SELECT * FROM provenance WHERE file_id=? ORDER BY imported_at DESC",[id]),"projects":try (f["project_ids"] as? [String] ?? []).map{try project($0)}]
+            let id=try required(p,"id"); let f=try file(id); let versions=try db.query("SELECT *,CASE WHEN id=? THEN 1 ELSE 0 END is_current FROM versions WHERE file_id=? ORDER BY created_at DESC,rowid DESC",[f["current_version"],id]).map { row -> [String:Any] in var v=row; v["final_projects"]=try db.query("SELECT p.id,p.title FROM project_deliverables d JOIN projects p ON p.id=d.project_id WHERE d.file_id=? AND d.version_id=?",[id,row["id"]]); return v }; return ["file":f,"versions":versions,"provenance":try db.query("SELECT * FROM provenance WHERE file_id=? ORDER BY imported_at DESC",[id]),"projects":try (f["project_ids"] as? [String] ?? []).map{try project($0)}]
         case "file_update": return try updateFiles(p)
         case "import": return try importPaths(p)
         case "import_jobs": return ["items":try db.query("SELECT * FROM import_jobs ORDER BY created_at DESC LIMIT 100")]
@@ -279,7 +303,7 @@ final class Store {
         case "version_restore":
             let id=try required(p,"id"),version=try required(p,"version_id"); let url=try blobURL(fileID:id,versionID:version); return try addVersion(id:id,path:url.path,source:"restore",note:"恢复历史版本 \(version)",force:true)
         case "version_final":
-            let id=try required(p,"id"),version=try required(p,"version_id"); guard !(try db.query("SELECT id FROM versions WHERE file_id=? AND id=?",[id,version])).isEmpty else { throw fail("版本不存在") }; try db.transaction { try db.exec("UPDATE versions SET is_final=0 WHERE file_id=?",[id]); try db.exec("UPDATE versions SET is_final=1 WHERE id=?",[version]); try db.exec("UPDATE files SET final=1 WHERE id=?",[id]) }; return ["ok":true]
+            let id=try required(p,"id"),version=try required(p,"version_id"); guard !(try db.query("SELECT id FROM versions WHERE file_id=? AND id=?",[id,version])).isEmpty else { throw fail("版本不存在") }; try db.transaction { try db.exec("UPDATE versions SET is_final=0 WHERE file_id=?",[id]); try db.exec("UPDATE versions SET is_final=1 WHERE id=?",[version]); try db.exec("UPDATE files SET final=1 WHERE id=?",[id]); for relation in try db.query("SELECT project_id FROM file_projects WHERE file_id=?",[id]) { _ = try selectDeliverables(["project_id":relation["project_id"]!,"file_ids":[id],"version_id":version]) } }; return ["ok":true]
         case "sources": return ["items":try db.query("SELECT * FROM sources ORDER BY rowid"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 100")]
         case "source_save": return try saveSource(p)
         case "source_delete": try db.exec("DELETE FROM sources WHERE id=?",[try required(p,"id")]); return ["ok":true]
@@ -307,7 +331,7 @@ final class Store {
     private func status() throws -> [String:Any] {
         let available=fm.fileExists(atPath:root.appendingPathComponent("workvault.sqlite").path) && fm.fileExists(atPath:root.appendingPathComponent("blobs").path)
         let free=(try? fm.attributesOfFileSystem(forPath:root.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
-        return ["version":"1.0.0","root":root.path,"setup_complete":setting("setup_complete",false) ?? false,"projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=1").first?["n"] ?? 0,"pending_projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=0").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files WHERE status='managed'").first?["n"] ?? 0,"inbox":try db.query("SELECT count(*) n FROM files WHERE status='pending'").first?["n"] ?? 0,"bytes":try db.query("SELECT coalesce(sum(size),0) n FROM blobs").first?["n"] ?? 0,"free_bytes":free,"recent_files":try listFiles(["limit":8])["items"] ?? [],"formats":try db.query("SELECT ext,count(*) count FROM files WHERE status='managed' GROUP BY ext ORDER BY count DESC"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 8"),"storage_available":available]
+        return ["version":"1.1.0","root":root.path,"setup_complete":setting("setup_complete",false) ?? false,"projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=1").first?["n"] ?? 0,"pending_projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=0").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files WHERE status='managed'").first?["n"] ?? 0,"inbox":try db.query("SELECT count(*) n FROM files WHERE status='pending'").first?["n"] ?? 0,"bytes":try db.query("SELECT coalesce(sum(size),0) n FROM blobs").first?["n"] ?? 0,"free_bytes":free,"recent_files":try listFiles(["limit":8])["items"] ?? [],"formats":try db.query("SELECT ext,count(*) count FROM files WHERE status='managed' GROUP BY ext ORDER BY count DESC"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 8"),"storage_available":available]
     }
     private func updateFiles(_ p:[String:Any]) throws -> [String:Any] {
         let ids=p["ids"] as? [String] ?? []; guard !ids.isEmpty,ids.count<=1000 else { throw fail("请选择 1–1000 个文件") }
@@ -315,7 +339,7 @@ final class Store {
         return try db.transaction {
             for id in ids {
                 _ = try file(id)
-                for key in ["favorite","final"] { if let value=p[key] as? Bool { try db.exec("UPDATE files SET \(key)=?,updated_at=? WHERE id=?",[value,now(),id]) } }
+                for key in ["favorite"] { if let value=p[key] as? Bool { try db.exec("UPDATE files SET \(key)=?,updated_at=? WHERE id=?",[value,now(),id]) } }
                 if let status=p["status"] as? String { guard ["managed","pending","trash"].contains(status) else { throw fail("无效文件状态") }; try db.exec("UPDATE files SET status=?,updated_at=? WHERE id=?",[status,now(),id]); try event(status == "trash" ? "trash" : "status","文件状态：\(status)",file:id) }
                 if let name=p["name"] as? String { let safe=safeName(name); try db.exec("UPDATE files SET name=?,ext=?,updated_at=? WHERE id=?",[safe,URL(fileURLWithPath:safe).pathExtension.lowercased(),now(),id]); try db.exec("UPDATE metadata_fts SET name=? WHERE file_id=?",[safe,id]) }
                 if let tags=p["tags"] as? [String] { guard tags.count<=100,tags.allSatisfy({$0.count<=200}) else { throw fail("标签过多或过长") }; try db.exec("UPDATE files SET tags=?,updated_at=? WHERE id=?",[jsonString(tags),now(),id]); try db.exec("UPDATE metadata_fts SET tags=? WHERE file_id=?",[tags.joined(separator:" "),id]) }
@@ -323,9 +347,14 @@ final class Store {
                     if projectID.isEmpty {
                         if p["replace_projects"] as? Bool == true { try db.exec("DELETE FROM file_projects WHERE file_id=?",[id]); try event("dissociate","用户明确移除全部项目关联",file:id) }
                     } else {
-                        _ = try project(projectID); if p["replace_projects"] as? Bool == true { try db.exec("DELETE FROM file_projects WHERE file_id=?",[id]) }; try db.exec("INSERT OR IGNORE INTO file_projects VALUES(?,?)",[id,projectID]); try db.exec("UPDATE projects SET updated_at=? WHERE id=?",[now(),projectID]); try event("associate","用户确认关联",project:projectID,file:id)
+                        _ = try project(projectID); if p["replace_projects"] as? Bool == true { try db.exec("DELETE FROM file_projects WHERE file_id=? AND project_id<>?",[id,projectID]) }; try db.exec("INSERT OR IGNORE INTO file_projects VALUES(?,?)",[id,projectID]); try db.exec("UPDATE projects SET updated_at=? WHERE id=?",[now(),projectID]); try event("associate","用户确认关联",project:projectID,file:id)
                     }
                 }
+                if let final=p["final"] as? Bool {
+                    if final { for relation in try db.query("SELECT project_id FROM file_projects WHERE file_id=?",[id]) { _ = try selectDeliverables(["project_id":relation["project_id"]!,"file_ids":[id]]) } }
+                    else { try db.exec("DELETE FROM project_deliverables WHERE file_id=?",[id]) }
+                }
+                try refreshFinalMarkers(fileID:id)
                 if p["status"] as? String == "managed" { try db.exec("UPDATE provenance SET confidence='用户确认',status='managed' WHERE file_id=? AND confidence='待确认'",[id]) }
             }
             return ["updated":ids.count]
@@ -428,7 +457,7 @@ final class Store {
         guard let destination=p["destination"] as? String,!destination.isEmpty else { throw fail("请选择导出目标目录") }
         let targetDirectory=URL(fileURLWithPath:destination).standardizedFileURL
         var isDir:ObjCBool=false; guard fm.fileExists(atPath:targetDirectory.path,isDirectory:&isDir),isDir.boolValue else { throw fail("导出目标必须是已存在的目录") }
-        let target=targetDirectory.appendingPathComponent(safeName(f["name"] as? String ?? "file")); guard !fm.fileExists(atPath:target.path) else { throw fail("目标文件已存在，请选择其他目录或先重命名") }
+        let target=targetDirectory.appendingPathComponent(safeName(p["name"] as? String ?? f["name"] as? String ?? "file")); guard !fm.fileExists(atPath:target.path) else { throw fail("目标文件已存在，请选择其他目录或先重命名") }
         try fm.copyItem(at:source,to:target); try? fm.setAttributes([.posixPermissions:0o600],ofItemAtPath:target.path); guard try Store.hashFile(source) == Store.hashFile(target) else { try? fm.removeItem(at:target); throw fail("导出校验失败") }
         return ["path":target.path]
     }
@@ -584,6 +613,7 @@ final class Store {
         try checkStorage(); var errors:[String]=[]; var checked=0
         for row in try db.query("SELECT * FROM blobs") { let relative=row["path"] as? String ?? ""; let url=root.appendingPathComponent(relative); do { guard validRelative(relative),relative.hasPrefix("blobs/") else { throw fail("文件实体路径无效") }; _ = try regularFile(url); guard try Store.hashFile(url) == row["hash"] as? String else { throw fail("哈希不一致") }; checked += 1 } catch { errors.append("\(row["hash"] ?? "")：\(error.localizedDescription)") } }
         for row in try db.query("SELECT f.id FROM files f LEFT JOIN versions v ON v.id=f.current_version WHERE v.id IS NULL OR v.file_id<>f.id") { errors.append("当前版本引用无效：\(row)") }
+        for row in try db.query("SELECT d.project_id,d.file_id,d.version_id FROM project_deliverables d JOIN versions v ON v.id=d.version_id WHERE v.file_id<>d.file_id") { errors.append("最终成果版本引用无效：\(row)") }
         for row in try db.query("PRAGMA foreign_key_check") { errors.append("外键异常：\(row)") }
         for row in try db.query("PRAGMA integrity_check") { if row["integrity_check"] as? String != "ok" { errors.append(String(describing:row)) } }
         return ["checked":checked,"errors":errors]
@@ -620,7 +650,7 @@ final class Store {
             for url in try expand([temp.path]) where !url.lastPathComponent.hasSuffix("-wal") && !url.lastPathComponent.hasSuffix("-shm") {
                 let relative=String(url.path.dropFirst(temp.path.count+1)); manifest.append(["path":relative,"sha256":try Store.hashFile(url),"size":try regularFile(url)])
             }
-            let doc:[String:Any]=["format":"workvault-backup","version":1,"schema":3,"app_version":"1.0.0","created_at":now(),"include_index":includeIndex,"projects":try db.query("SELECT count(*) n FROM projects").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files").first?["n"] ?? 0,"manifest":manifest]
+            let doc:[String:Any]=["format":"workvault-backup","version":1,"schema":4,"app_version":"1.1.0","created_at":now(),"include_index":includeIndex,"projects":try db.query("SELECT count(*) n FROM projects").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files").first?["n"] ?? 0,"manifest":manifest]
             try JSONSerialization.data(withJSONObject:doc,options:[.prettyPrinted,.sortedKeys]).write(to:temp.appendingPathComponent("manifest.json"),options:.atomic)
             let check=try inspectBackup(path:temp.path); guard check["valid"] as? Bool == true else { throw fail("备份校验失败：\(check["errors"] ?? "")") }
             try fm.moveItem(at:temp,to:target); try db.exec("INSERT INTO backups VALUES(?,?,?,?)",[uuid(),target.path,now(),manifest.count]); try log("success","手动备份已完成并校验：\(target.lastPathComponent)")
@@ -630,7 +660,7 @@ final class Store {
     private func inspectBackup(path:String) throws -> [String:Any] {
         let target=URL(fileURLWithPath:path).standardizedFileURL; let manifestPath=target.appendingPathComponent("manifest.json")
         guard fm.fileExists(atPath:manifestPath.path),try regularFile(manifestPath)<16*1024*1024 else { throw fail("备份清单不存在或过大") }
-        guard let doc=try JSONSerialization.jsonObject(with:Data(contentsOf:manifestPath)) as? [String:Any],doc["format"] as? String == "workvault-backup",doc["version"] as? Int == 1,(doc["schema"] as? Int ?? 999)<=3,let manifest=doc["manifest"] as? [[String:Any]],manifest.count<=100000 else { throw fail("备份版本不兼容或格式无效") }
+        guard let doc=try JSONSerialization.jsonObject(with:Data(contentsOf:manifestPath)) as? [String:Any],doc["format"] as? String == "workvault-backup",doc["version"] as? Int == 1,(doc["schema"] as? Int ?? 999)<=4,let manifest=doc["manifest"] as? [[String:Any]],manifest.count<=100000 else { throw fail("备份版本不兼容或格式无效") }
         var errors:[String]=[]; var seen=Set<String>()
         for row in manifest {
             guard let relative=row["path"] as? String,validRelative(relative),let expected=row["sha256"] as? String,expected.count==64,!seen.contains(relative) else { errors.append("清单路径或哈希无效"); continue }
@@ -662,8 +692,8 @@ final class Store {
         guard fm.fileExists(atPath:target.appendingPathComponent("workvault.sqlite").path),fm.fileExists(atPath:target.appendingPathComponent("blobs").path) else { throw fail("该目录不是现有 WorkVault 文件库") }
         do {
             let validation=try DB(target.appendingPathComponent("workvault.sqlite"),readOnly:true)
-            guard (try validation.query("PRAGMA user_version").first?["user_version"] as? Int ?? 0)<=3 else { throw fail("文件库来自更新版本") }
-            guard let version=try validation.query("SELECT max(version) n FROM schema_migrations").first?["n"] as? Int,version<=3 else { throw fail("文件库结构版本较新或不兼容") }
+            guard (try validation.query("PRAGMA user_version").first?["user_version"] as? Int ?? 0)<=4 else { throw fail("文件库来自更新版本") }
+            guard let version=try validation.query("SELECT max(version) n FROM schema_migrations").first?["n"] as? Int,version<=4 else { throw fail("文件库结构版本较新或不兼容") }
             guard try validation.query("PRAGMA integrity_check").first?["integrity_check"] as? String == "ok",try validation.query("PRAGMA foreign_key_check").isEmpty else { throw fail("目标数据库完整性校验失败") }
             for row in try validation.query("SELECT * FROM blobs") { guard let relative=row["path"] as? String,validRelative(relative),relative.hasPrefix("blobs/"),try Store.hashFile(target.appendingPathComponent(relative)) == row["hash"] as? String else { throw fail("目标文件实体校验失败") } }
         }
