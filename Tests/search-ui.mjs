@@ -18,10 +18,23 @@ try{
  await query('#file-q','','files');names=await page.locator('tr[data-file] .name').allTextContents();check('Clearing search restores ordinary Markdown browsing',names.some(n=>/\.(md|markdown)$/i.test(n)));
  await page.locator('#file-ext').selectOption('md');await page.waitForTimeout(200);await page.locator('.loading').waitFor({state:'detached'});await query('#file-q','CCUS','files');check('A previous MD format filter resets when keyword search begins',await page.locator('#file-ext').inputValue()===''&&await page.locator('tr[data-file]').count()===3);
  await nav('projects');await page.locator('#project-search').fill('OnlyNotes');check('Projects are still searchable by title without returning note files',await page.locator('.projectcard').count()===1);
- await nav('deliverables');await query('#final-q','CCUS','deliverables');check('Final-output keyword search also excludes Markdown',await page.locator('.deliverable-card').count()===3&&!(await page.locator('.deliverable-filename>a').allTextContents()).some(n=>/\.(md|markdown)$/i.test(n)));
- await query('#final-q','MarkdownOnlyXYZ','deliverables');check('A note filename does not create a matching final-project group',await page.locator('[data-final-group]').count()===0);
- await query('#final-q','OnlyNotes','deliverables');check('A matched project title remains accessible with zero non-Markdown final matches',await page.locator('[data-final-group]').count()===1&&await page.locator('.deliverable-card').count()===0);
- await query('#final-q','','deliverables');await page.locator('#final-project').selectOption(fixture.b);await page.waitForTimeout(200);await page.locator('.loading').waitFor({state:'detached'});check('Cleared final-output search still displays both stored Markdown versions',await page.locator('.deliverable-card').count()===2);
+ await nav('deliverables');await query('#final-q','CCUS','deliverables');
+ check('Final search lists project results and a project count',await page.locator('.deliverable-project-results [data-final-group]').count()===1&&(await page.locator('.deliverable-summary').innerText()).includes('1 个项目'));
+ check('A matched final project has no file cards or file actions',await page.locator('.deliverable-card,[data-final-preview],[data-final-export]').count()===0);
+ await page.getByRole('button',{name:'查看项目成果'}).click();
+ await page.locator('.deliverable-card').first().waitFor();
+ check('Opening a matching project shows its files with the search cleared',await page.locator('#final-project').inputValue()===fixture.a&&await page.locator('#final-q').inputValue()===''&&await page.locator('.deliverable-card').count()===40);
+ await query('#final-q','CCUS-report.txt','deliverables');
+ check('A non-Markdown filename alone does not match a project',await page.locator('[data-final-group]').count()===0);
+ await query('#final-q','MarkdownOnlyXYZ','deliverables');
+ check('A Markdown filename alone does not match a project',await page.locator('[data-final-group]').count()===0);
+ await query('#final-q','Original Work','deliverables');
+ check('An original task title matches the renamed project',await page.locator(`[data-final-group="${fixture.a}"]`).count()===1);
+ await page.locator('#global-search').fill('OnlyNotes');await page.locator('#global-search').press('Enter');
+ await page.locator(`.deliverable-project-results [data-final-group="${fixture.b}"]`).waitFor();
+ check('Top search on the final page stays in project search',await page.locator('.deliverable-card').count()===0);
+ await page.getByRole('button',{name:'查看项目成果'}).click();await page.locator('.deliverable-card').first().waitFor();
+ check('Opening the matched project still shows both stored Markdown files',await page.locator('.deliverable-card').count()===2);
  check('No JavaScript errors or external requests',errors.length===0&&external.length===0);
  console.log(JSON.stringify({passed:checks.length,checks,errors,external_requests:external}));
 }catch(e){console.log(JSON.stringify({checks,errors,failure:String(e)}));throw e;}finally{await browser.close();}

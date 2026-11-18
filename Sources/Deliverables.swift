@@ -37,6 +37,9 @@ extension Store {
         let projectID=(p["project_id"] as? String).flatMap{$0.isEmpty ? nil : $0}
         let limit=max(1,min(projectID == nil ? 50 : 200,p["limit"] as? Int ?? (projectID == nil ? 12 : 40)))
         let offset=max(0,p["offset"] as? Int ?? 0)
+        if !q.isEmpty,p["project_results"] as? Bool == true {
+            return try searchDeliverableProjects(q,limit:limit,offset:offset)
+        }
         let match="(instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0 OR instr(lower(p.title),lower(?))>0)"
         let eligible=q.isEmpty ? "" : " AND \(nonMarkdownDeliverySearchSQL)"
         let countSQL="SELECT count(*) n FROM project_deliverables d JOIN files f ON f.id=d.file_id JOIN projects p ON p.id=d.project_id WHERE f.status='managed'"+eligible
@@ -62,6 +65,20 @@ extension Store {
             group.merge(try latestDelivery(id,q:q)){_,new in new};return group
         }
         return ["groups":groups,"total_projects":totalProjects,"total":total,"limit":limit,"offset":offset,"search_excludes_markdown":!q.isEmpty]
+    }
+
+    private func searchDeliverableProjects(_ query:String,limit:Int,offset:Int) throws -> [String:Any] {
+        let match="WHERE instr(lower(p.title),lower(?))>0 OR instr(lower(p.original_title),lower(?))>0"
+        let latest="(SELECT max(coalesce(d.delivered_at,d.selected_at)) FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=p.id AND f.status='managed')"
+        let count=try db.query("SELECT count(*) n FROM projects p \(match)",[query,query]).first?["n"] as? Int ?? 0
+        let rows=try db.query("SELECT p.id FROM projects p \(match) ORDER BY \(latest) DESC,p.updated_at DESC,p.id LIMIT ? OFFSET ?",[query,query,limit,offset])
+        let groups=try rows.map { row -> [String:Any] in
+            let id=row["id"] as! String
+            var group:[String:Any]=["project":try project(id)]
+            group.merge(try latestDelivery(id)){_,new in new}
+            return group
+        }
+        return ["groups":groups,"total_projects":count,"limit":limit,"offset":offset]
     }
 
     func selectDeliverables(_ p:[String:Any],evidenceSource:String="user",displayNames:[String:String]=[:],sourcePaths:[String:String]=[:],deliveredAt:String?=nil,timeSource:String="task_delivery") throws -> [String:Any] {

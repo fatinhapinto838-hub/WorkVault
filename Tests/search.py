@@ -9,7 +9,7 @@ class Search(unittest.TestCase):
  @classmethod
  def setUpClass(cls):
   RUN.mkdir(parents=True,exist_ok=True);cls.base=RUN/str(time.time_ns());cls.base.mkdir();cls.v=Vault(cls.base/'library');cls.v.rpc('setup')
-  cls.a=cls.v.rpc('project_save',title='CCUS SearchScope mixed project')['project']['id']
+  cls.a=cls.v.rpc('project_save',title='CCUS SearchScope mixed project',original_title='Original Work Title')['project']['id']
   cls.b=cls.v.rpc('project_save',title='OnlyNotes ProjectScope')['project']['id']
   cls.alias=cls.v.rpc('project_save',title='Alias Boundary')['project']['id']
   paths=[]
@@ -63,6 +63,14 @@ class Search(unittest.TestCase):
   self.assertEqual(self.rpc('files',q='AliasUnique')['total'],1)
   r=self.rpc('deliverables',q='AliasUnique');self.assertEqual(r['total'],0);self.assertEqual(r['groups'],[])
   self.assertEqual(self.rpc('deliverables',project_id=self.alias)['groups'][0]['items'][0]['display_name'],'AliasUnique.MD')
+ def test_06b_final_project_search_matches_titles_and_omits_file_rows(self):
+  r=self.rpc('deliverables',q='  CCUS  ',project_results=True)
+  self.assertEqual(r['total_projects'],1);self.assertEqual(r['groups'][0]['project']['id'],self.a)
+  self.assertNotIn('items',r['groups'][0]);self.assertEqual(r['groups'][0]['project']['deliverable_count'],73)
+  original=self.rpc('deliverables',q='Original Work',project_results=True)
+  self.assertEqual(original['groups'][0]['project']['id'],self.a)
+  self.assertEqual(self.rpc('deliverables',q='CCUS-report.txt',project_results=True)['total_projects'],0)
+  self.assertEqual(self.rpc('deliverables',q='CCUS',project_results=True,offset=1,limit=1)['groups'],[])
  def test_07_browser_search_routes(self):
   node=shutil.which('node') or 'node'
   r=subprocess.run([node,str(BASE/'Tests/search-ui.mjs'),str(self.v.ready),str(self.base/'ui-fixture.json')],cwd=BASE,capture_output=True,text=True,timeout=100)
