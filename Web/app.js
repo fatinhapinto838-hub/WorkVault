@@ -17,7 +17,7 @@ catch {
 } })() : [];
 const tagText = (v) => array(v).join(', ');
 const friendlyStatus = (s) => ({ active: '进行中', completed: '已完成', archived: '已归档', managed: '已归档', pending: '待确认', trash: '回收站', in_progress: '进行中' }[String(s)] || String(s || '进行中'));
-const sourceLabel = (s) => ({ manual: '手动导入', downloads: '下载目录', dedicated: '专用收件箱', history: '官方导出', export: '官方导出', official_export: '官方导出', manual_link: '用户提供链接', user: '用户输入', manual_upload: '浏览器上传', upload: '浏览器上传', manifest: '用户提供任务清单' }[String(s)] || String(s || '未知来源'));
+const sourceLabel = (s) => ({ manual: '手动导入', downloads: '下载目录', dedicated: '专用收件箱', codex_outputs: 'Codex 成果目录', history: '官方导出', export: '官方导出', official_export: '官方导出', manual_link: '用户提供链接', user: '用户输入', manual_upload: '浏览器上传', upload: '浏览器上传', manifest: '用户提供任务清单' }[String(s)] || String(s || '未知来源'));
 let pendingConfirmation = null;
 let page = 'dashboard', status = {}, projects = [], categories = [], files = [], total = 0, offset = 0, listMode = localStorage.getItem('wv-list') || 'list', selected = new Set();
 let finalFilter = { q: '', project_id: '', offset: 0 };
@@ -214,7 +214,7 @@ async function filesPage() {
     total = Number(r.total) || 0;
     return `<div class="pagehead"><div><h1>${pending ? '待确认收件箱' : trash ? '回收站' : '文件中心'}</h1><p>${pending ? '确认文件来源与项目归属，让档案保持清晰可靠。' : trash ? '误删文件可以恢复。此处操作仅影响本地 WorkVault 档案。' : '预览、检索和管理你的全部 Work 成果。'}</p></div><div class="actions">${!trash ? btn('检查外部编辑', 'check-edits', 'refresh') : ''}${!trash ? btn('导入文件', 'import', 'upload', 'primary') : ''}</div></div>${pending && status.pending_projects ? `<div class="notice warning">${icon('info')}另有 ${status.pending_projects} 个官方导出会话无法区分 Chat / Work。请在项目中心打开候选项目，确认属于 Work 后纳入正式档案。${btn('查看候选项目', 'goto-projects', 'folder', 'small')}</div>` : ''}${pending ? '<div class="notice">' + icon('info') + '下载目录中的文件不会被自动认定为 Work 成果。请选择文件，确认属于 Work 后再关联项目。</div>' : ''}<div class="toolbar"><input id="file-q" placeholder="搜索文件名、项目名或标签…" value="${attr(filter.q)}">${fileCenter ? btn('搜索排除', 'file-search-exclusions', 'settings', 'small') : ''}<select id="file-project">${projectOptions('全部项目').map(([v, l]) => `<option value="${attr(v)}" ${v === filter.project_id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select><select id="file-ext"><option value="">全部格式</option>${['pdf', 'docx', 'xlsx', 'pptx', 'md', 'txt', 'csv', 'json', 'py', 'png', 'jpg', 'webp', 'zip'].map(x => `<option value="${x}" ${filter.q && excludedExtensions.includes(x) ? 'disabled' : ''} ${x === filter.ext ? 'selected' : ''}>${x.toUpperCase()}</option>`).join('')}</select><select id="file-sort">${[['newest', '最近更新'], ['oldest', '最早更新'], ['name', '文件名称'], ['size', '文件大小']].map(([v, l]) => `<option value="${v}" ${filter.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button id="favorite-filter" class="${filter.favorite ? 'primary' : ''}" title="仅收藏">${icon('star')}</button><div class="segmented"><button data-action="view-list" class="${listMode === 'list' ? 'active' : ''}" title="列表视图">${icon('list')}</button><button data-action="view-grid" class="${listMode === 'grid' ? 'active' : ''}" title="网格视图">${icon('grid')}</button></div></div><div id="selection-bar"></div>${array(r.search_excluded_extensions).length ? `<p class="footnote" data-search-excluded-extensions>关键词搜索已排除 ${array(r.search_excluded_extensions).map(ext => '.' + esc(ext)).join('、')}。清除关键词后可正常浏览。</p>` : ''}<section class="section">${files.length ? (listMode === 'grid' ? fileGrid(files) : fileRows(files, true)) : empty(filter.q ? '没有找到相关文件' : pending ? '收件箱已清空' : trash ? '回收站为空' : '文件库等待你的第一份成果', filter.q ? '尝试其他关键词或清除筛选条件。' : pending ? '新发现但来源不明的文件会在这里等待确认。' : '拖拽文件或文件夹到此窗口，或使用导入按钮。', !pending && !trash && !filter.q ? 'import' : '')}<div class="pager"><span>共 ${total} 份文件${total ? ` · 第 ${Math.floor(offset / 40) + 1} / ${Math.ceil(total / 40)} 页` : ''}</span><div class="actions"><button data-action="prev" ${offset === 0 ? 'disabled' : ''}>上一页</button><button data-action="next" ${offset + 40 >= total ? 'disabled' : ''}>下一页</button></div></div></section>`;
 }
-async function sourcesPage() { const d = await rpc('sources'); return `<div class="pagehead"><div><h1>同步与接收中心</h1><p>只观察你授权的目录，原始文件始终保留。</p></div><div class="actions">${btn('历史数据导入', 'history', 'book')}${btn('添加接收目录', 'add-source', 'plus')}${btn('扫描授权目录', 'scan', 'sync', 'primary')}</div></div><div class="notice">${icon('shield')}ChatGPT 个人账户的 Work 任务与文件公开授权接口当前未验证可用。下方状态只表示本地文件接收，不表示已连接 ChatGPT 账号。</div><section class="section"><h2>文件来源</h2><div class="sourcecard"><span class="foldericon">${icon('lock')}</span><div class="sourcebody"><h3>ChatGPT 官方账户接口 <span class="badge gray">当前不可用</span></h3><p>不会读取登录 Cookie、应用私有数据库或浏览器凭据。</p><p>替代方式：保存成果至专用目录、拖拽导入，或通过官方导出包获取任务标题。</p></div></div>${array(d.items).map(s => `<div class="sourcecard"><span class="foldericon">${icon(s.kind === 'downloads' ? 'download' : 'inbox')}</span><div class="sourcebody"><h3>${s.kind === 'downloads' ? '下载目录 · 待确认来源' : 'Work 专用接收目录'} <span class="badge ${s.enabled ? 'green' : 'gray'}">${s.enabled ? '监控已启用' : '已暂停'}</span></h3><p>${esc(s.path)}</p><p>最近扫描：${time(s.last_scan)}${s.error ? ' · ' + esc(s.error) : ''}</p></div><button class="small" data-source-toggle="${attr(s.id)}" data-enabled="${s.enabled ? '0' : '1'}">${s.enabled ? '暂停' : '启用'}</button><button class="small danger" data-source-delete="${attr(s.id)}">移除</button></div>`).join('')}${!array(d.items).length ? empty('还没有启用目录监控', '添加一个明确授权的目录。系统只登记稳定文件，忽略临时下载与符号链接。', 'add-source', '添加目录', 'folder') : ''}</section><div class="twocol"><section class="section"><h2>接收日志</h2><div class="loglist">${activity(array(d.logs))}</div></section><section class="section"><h2>可靠的标题关联</h2><p class="muted" style="font-size:12px">使用官方导出中的会话标题，或主动粘贴 Work 标题和链接。仅凭文件名推测的标题不会被当作原始任务标题。</p>${btn('新建关联项目', 'new-project', 'link')}${btn('导入官方导出包', 'history', 'book')}</section></div><section class="section"><div class="sectionhead"><h2>导入任务</h2>${btn('刷新任务', 'import-jobs', 'refresh', 'small')}</div><div id="import-jobs">${await importJobsHTML()}</div></section>`; }
+async function sourcesPage() { const d = await rpc('sources'); return `<div class="pagehead"><div><h1>同步与接收中心</h1><p>只观察你授权的目录，原始文件始终保留。</p></div><div class="actions">${btn('历史数据导入', 'history', 'book')}${btn('添加接收目录', 'add-source', 'plus')}${array(d.items).some(s => s.kind === 'codex_outputs') ? '' : btn('接收 Codex 成果', 'add-codex-source', 'folder')}${btn('扫描授权目录', 'scan', 'sync', 'primary')}</div></div><div class="notice">${icon('shield')}ChatGPT 个人账户的 Work 任务与文件公开授权接口当前未验证可用。下方状态只表示本地文件接收，不表示已连接 ChatGPT 账号。</div><section class="section"><h2>文件来源</h2><div class="sourcecard"><span class="foldericon">${icon('lock')}</span><div class="sourcebody"><h3>ChatGPT 官方账户接口 <span class="badge gray">当前不可用</span></h3><p>不会读取登录 Cookie、应用私有数据库或浏览器凭据。</p><p>替代方式：保存成果至专用目录、拖拽导入，或通过官方导出包获取任务标题。</p></div></div>${array(d.items).map(s => `<div class="sourcecard"><span class="foldericon">${icon(s.kind === 'downloads' ? 'download' : 'inbox')}</span><div class="sourcebody"><h3>${s.kind === 'downloads' ? '下载目录 · 待确认来源' : s.kind === 'codex_outputs' ? 'Codex 成果目录' : 'Work 专用接收目录'} <span class="badge ${s.enabled ? 'green' : 'gray'}">${s.enabled ? '监控已启用' : '已暂停'}</span></h3><p>${esc(s.path)}</p>${s.kind === 'codex_outputs' ? '<p>接收各任务 outputs 中的新文件及更新文件，归属可在待确认收件箱核对。</p>' : ''}<p>最近扫描：${time(s.last_scan)}${s.error ? ' · ' + esc(s.error) : ''}</p></div><button class="small" data-source-toggle="${attr(s.id)}" data-enabled="${s.enabled ? '0' : '1'}">${s.enabled ? '暂停' : '启用'}</button><button class="small danger" data-source-delete="${attr(s.id)}">移除</button></div>`).join('')}${!array(d.items).length ? empty('还没有启用目录监控', '添加一个明确授权的目录。系统只登记稳定文件，忽略临时下载与符号链接。', 'add-source', '添加目录', 'folder') : ''}</section><div class="twocol"><section class="section"><h2>接收日志</h2><div class="loglist">${activity(array(d.logs))}</div></section><section class="section"><h2>可靠的标题关联</h2><p class="muted" style="font-size:12px">使用官方导出中的会话标题，或主动粘贴 Work 标题和链接。仅凭文件名推测的标题不会被当作原始任务标题。</p>${btn('新建关联项目', 'new-project', 'link')}${btn('导入官方导出包', 'history', 'book')}</section></div><section class="section"><div class="sectionhead"><h2>导入任务</h2>${btn('刷新任务', 'import-jobs', 'refresh', 'small')}</div><div id="import-jobs">${await importJobsHTML()}</div></section>`; }
 async function importJobsHTML() { try {
     const d = await rpc('import_jobs');
     return array(d.items).slice(0, 20).map(j => `<div class="activity"><div class="circle">${icon(j.status === 'failed' ? 'info' : 'upload')}</div><div style="flex:1"><p>${esc(j.source || j.id)} · ${esc(j.status || '')}</p><small>${time(j.created_at)} ${esc(j.error || '')}</small></div>${['failed', 'partial', 'cancelled'].includes(j.status) ? `<button class="small" data-retry="${attr(j.id)}">重试</button>` : ''}</div>`).join('') || '<p class="muted">暂无导入任务</p>';
@@ -423,7 +423,10 @@ async function action(a, _node) { if (a.startsWith('goto-')) {
         await render();
         break;
     case 'add-source':
-        await sourceForm();
+        sourceForm();
+        break;
+    case 'add-codex-source':
+        sourceForm('codex_outputs');
         break;
     case 'scan': {
         const r = await rpc('scan');
@@ -629,8 +632,52 @@ async function checkEdits() { const d = await rpc('check_edits'), items = array(
     await rpc('discard_edit', { id: n.dataset.editKeep });
     await checkEdits();
 } })); }
-async function sourceForm() { modal('添加授权接收目录', selectField('kind', '目录用途', [['dedicated', 'Work 专用接收目录'], ['downloads', '下载目录（文件来源待确认）']]) + `<div class="field"><label>授权目录</label><div class="fieldrow"><input name="path" id="source-path" placeholder="选择本机目录…">${btn('选择', 'source-pick', 'folder')}</div><small>仅在本应用运行时监控。不会修改或删除目录内的原始文件。</small></div><label class="checkfield"><input type="checkbox" name="enabled" checked>启用目录监控</label>`, btn('取消', 'close') + btn('保存并授权', 'source-submit', 'check', 'primary')); $('[data-action=source-pick]').onclick = () => void run(async () => { const p = await pickDirectory(); if (p)
-    $('#source-path').value = p; }); $('[data-action=source-submit]').onclick = () => void run(async () => { await rpc('source_save', formValues()); closeModal(); toast('已添加授权目录'); await render(); }); }
+function sourceForm(kind = 'dedicated') {
+    const defaultCodexPath = String(status.codex_output_root || '');
+    const types = [
+        ['dedicated', 'Work 专用接收目录'],
+        ['downloads', '下载目录'],
+        ['codex_outputs', 'Codex 成果目录']
+    ];
+    modal('添加授权接收目录', selectField('kind', '目录用途', types, kind) + `
+  <div class="field"><label for="source-path">授权目录</label><div class="fieldrow">
+   <input name="path" id="source-path" placeholder="选择本机目录…" value="${attr(kind === 'codex_outputs' ? defaultCodexPath : '')}">
+   ${btn('选择', 'source-pick', 'folder')}
+  </div><small id="source-scope"></small></div>
+  <label class="checkfield"><input type="checkbox" name="enabled" checked>启用目录监控</label>`, btn('取消', 'close') + btn('保存并授权', 'source-submit', 'check', 'primary'));
+    const type = $('#f-kind');
+    const path = $('#source-path');
+    const updateScope = () => {
+        const codex = type.value === 'codex_outputs';
+        if (codex && !path.value)
+            path.value = defaultCodexPath;
+        if (!codex && path.value === defaultCodexPath)
+            path.value = '';
+        $('#source-scope').textContent = codex
+            ? '选择 Codex 根目录。WorkVault 只接收「日期/任务/outputs」内的新建和更新文件，现存文件仅记作基线。'
+            : 'WorkVault 运行时扫描授权目录，原始文件留在原处。';
+    };
+    type.onchange = updateScope;
+    updateScope();
+    $('[data-action=source-pick]').onclick = () => void run(async () => {
+        const selectedPath = await pickDirectory();
+        if (selectedPath)
+            path.value = selectedPath;
+    });
+    const save = $('[data-action=source-submit]');
+    save.onclick = () => void run(async () => {
+        save.disabled = true;
+        try {
+            await rpc('source_save', formValues());
+            closeModal();
+            toast('已添加授权目录');
+            await render();
+        }
+        finally {
+            save.disabled = false;
+        }
+    });
+}
 async function categoryManager() { const d = await rpc('categories'); modal('主题分类', `<div id="category-list">${array(d.items).map((c, i) => `<div class="sourcecard" style="padding:10px 0"><input data-cat-name="${attr(c.id)}" value="${attr(c.name)}" style="flex:1"><input data-cat-order="${attr(c.id)}" type="number" value="${attr(c.position ?? i)}" style="width:65px" aria-label="排序"><button class="small" data-cat-save="${attr(c.id)}">保存</button><button class="small danger" data-cat-delete="${attr(c.id)}">删除</button></div>`).join('')}</div><div class="divider"></div>${field('new_category', '新主题名称')}`, btn('关闭', 'close') + btn('新增主题', 'category-add', 'plus', 'primary')); $$('[data-cat-save]').forEach(n => n.onclick = () => void run(async () => { await rpc('category_save', { id: n.dataset.catSave, name: $(`[data-cat-name="${n.dataset.catSave}"]`).value, position: Number($(`[data-cat-order="${n.dataset.catSave}"]`).value) }); toast('主题已保存'); })); $$('[data-cat-delete]').forEach(n => n.onclick = () => void run(async () => { await rpc('category_delete', { id: n.dataset.catDelete }); await categoryManager(); })); $('[data-action=category-add]').onclick = () => void run(async () => { await rpc('category_save', { name: formValues().new_category, position: array(d.items).length }); await categoryManager(); }); }
 async function mergeProject() { modal('合并项目', `<p>将当前项目的文件关系合并到目标项目。相同标题不代表同一任务，请先确认。</p>${selectField('to_id', '目标项目', projects.filter(p => p.id !== projectID).map(p => [p.id, p.title]))}`, btn('取消', 'close') + btn('确认合并', 'merge-submit', 'link', 'primary')); $('[data-action=merge-submit]').onclick = () => void run(async () => { const to = formValues().to_id; if (!to)
     throw new Error('没有可合并的目标项目'); await rpc('project_merge', { from_id: projectID, to_id: to }); projectID = to; closeModal(); toast('项目已合并，来源记录保留'); await render(); }); }
