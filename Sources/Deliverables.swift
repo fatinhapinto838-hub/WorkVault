@@ -1,5 +1,10 @@
 import Foundation
 
+// Filtering happens before counts/pagination. A pinned delivery may retain a
+// Markdown name even after its shared file record has been renamed to .txt.
+let nonMarkdownFileSearchSQL="lower(f.ext) NOT IN ('md','markdown')"
+let nonMarkdownDeliverySearchSQL=nonMarkdownFileSearchSQL+" AND lower(d.display_name) NOT LIKE '%.md' AND lower(d.display_name) NOT LIKE '%.markdown'"
+
 extension Store {
     // A delivery pins an immutable version in a particular project. It never copies
     // a blob or silently follows a later working version of the same file.
@@ -12,7 +17,7 @@ extension Store {
         var conditions=["f.status='managed'"]; var args:[Any?]=[]
         if let id=projectID { conditions.append("d.project_id=?"); args.append(id) }
         if let id=fileID { conditions.append("d.file_id=?"); args.append(id) }
-        if !q.isEmpty { conditions.append("(instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0 OR instr(lower(p.title),lower(?))>0)"); args += [q,q,q] }
+        if !q.isEmpty { conditions.append(nonMarkdownDeliverySearchSQL);conditions.append("(instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0 OR instr(lower(p.title),lower(?))>0)"); args += [q,q,q] }
         let rows=try db.query("SELECT d.*,coalesce(d.delivered_at,d.selected_at) effective_at,p.title project_title,v.hash version_hash,v.size version_size,v.created_at version_created_at,CASE WHEN f.current_version=d.version_id THEN 1 ELSE 0 END version_is_current FROM project_deliverables d JOIN projects p ON p.id=d.project_id JOIN files f ON f.id=d.file_id JOIN versions v ON v.id=d.version_id AND v.file_id=d.file_id WHERE \(conditions.joined(separator:" AND ")) ORDER BY coalesce(d.delivered_at,d.selected_at) DESC,d.selected_at DESC,d.file_id,d.version_id LIMIT ? OFFSET ?",args+[max(1,min(500,limit)),max(0,offset)])
         return try rows.map { row in
             var result=try file(row["file_id"] as! String)
@@ -22,38 +27,41 @@ extension Store {
         }
     }
 
-    private func latestDelivery(_ projectID:String) throws -> [String:Any] {
-        try db.query("SELECT coalesce(d.delivered_at,d.selected_at) latest_at,CASE WHEN d.delivered_at IS NULL THEN 'collection' ELSE d.time_source END latest_time_source FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=? AND f.status='managed' ORDER BY coalesce(d.delivered_at,d.selected_at) DESC,d.selected_at DESC,d.file_id,d.version_id LIMIT 1",[projectID]).first ?? [:]
+    private func latestDelivery(_ projectID:String,q:String="") throws -> [String:Any] {
+        let filter=q.isEmpty ? "" : " AND \(nonMarkdownDeliverySearchSQL) AND (instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0 OR instr(lower(p.title),lower(?))>0)"
+        return try db.query("SELECT coalesce(d.delivered_at,d.selected_at) latest_at,CASE WHEN d.delivered_at IS NULL THEN 'collection' ELSE d.time_source END latest_time_source FROM project_deliverables d JOIN files f ON f.id=d.file_id JOIN projects p ON p.id=d.project_id WHERE d.project_id=? AND f.status='managed'"+filter+" ORDER BY coalesce(d.delivered_at,d.selected_at) DESC,d.selected_at DESC,d.file_id,d.version_id LIMIT 1",[projectID]+(q.isEmpty ? [] : [q,q,q])).first ?? [:]
     }
 
     func listDeliverables(_ p:[String:Any]) throws -> [String:Any] {
-        let q=String((p["q"] as? String ?? "").prefix(1000))
+        let q=String((p["q"] as? String ?? "").trimmingCharacters(in:.whitespacesAndNewlines).prefix(1000))
         let projectID=(p["project_id"] as? String).flatMap{$0.isEmpty ? nil : $0}
         let limit=max(1,min(projectID == nil ? 50 : 200,p["limit"] as? Int ?? (projectID == nil ? 12 : 40)))
         let offset=max(0,p["offset"] as? Int ?? 0)
         let match="(instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0 OR instr(lower(p.title),lower(?))>0)"
-        let countSQL="SELECT count(*) n FROM project_deliverables d JOIN files f ON f.id=d.file_id JOIN projects p ON p.id=d.project_id WHERE f.status='managed'"
+        let eligible=q.isEmpty ? "" : " AND \(nonMarkdownDeliverySearchSQL)"
+        let countSQL="SELECT count(*) n FROM project_deliverables d JOIN files f ON f.id=d.file_id JOIN projects p ON p.id=d.project_id WHERE f.status='managed'"+eligible
         let countArgs:[Any?]=q.isEmpty ? [] : [q,q,q]
         let total=try db.query(countSQL+(projectID == nil ? "" : " AND d.project_id=?")+(q.isEmpty ? "" : " AND \(match)"),(projectID == nil ? [] : [projectID])+countArgs).first?["n"] as? Int ?? 0
         if let id=projectID {
             let project=try self.project(id)
             var group:[String:Any]=["project":project,"items":try deliverableRows(projectID:id,q:q,limit:limit,offset:offset),"total":total]
-            group.merge(try latestDelivery(id)){_,new in new}
-            return ["groups":[group],"total_projects":1,"total":total,"limit":limit,"offset":offset]
+            group.merge(try latestDelivery(id,q:q)){_,new in new}
+            return ["groups":[group],"total_projects":1,"total":total,"limit":limit,"offset":offset,"search_excludes_markdown":!q.isEmpty]
         }
         // Page projects independently of their file counts, so a large project
         // cannot hide smaller projects. Empty projects remain easy to discover.
-        let filter=q.isEmpty ? "" : " WHERE instr(lower(p.title),lower(?))>0 OR EXISTS(SELECT 1 FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=p.id AND f.status='managed' AND (instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0))"
+        let filter=q.isEmpty ? "" : " WHERE instr(lower(p.title),lower(?))>0 OR EXISTS(SELECT 1 FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=p.id AND f.status='managed'\(eligible) AND (instr(lower(d.display_name),lower(?))>0 OR instr(lower(f.name),lower(?))>0))"
         let projectArgs:[Any?]=q.isEmpty ? [] : [q,q,q]
         let totalProjects=try db.query("SELECT count(*) n FROM projects p"+filter,projectArgs).first?["n"] as? Int ?? 0
-        let projects=try db.query("SELECT p.id FROM projects p"+filter+" ORDER BY (SELECT max(coalesce(d.delivered_at,d.selected_at)) FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=p.id AND f.status='managed') DESC,p.updated_at DESC,p.id LIMIT ? OFFSET ?",projectArgs+[limit,offset])
+        let dateFilter=q.isEmpty ? "" : eligible+" AND \(match)"
+        let projects=try db.query("SELECT p.id FROM projects p"+filter+" ORDER BY (SELECT max(coalesce(d.delivered_at,d.selected_at)) FROM project_deliverables d JOIN files f ON f.id=d.file_id WHERE d.project_id=p.id AND f.status='managed'\(dateFilter)) DESC,p.updated_at DESC,p.id LIMIT ? OFFSET ?",projectArgs+countArgs+[limit,offset])
         let groups=try projects.map { row -> [String:Any] in
             let id=row["id"] as! String
             let count=try db.query(countSQL+" AND d.project_id=?"+(q.isEmpty ? "" : " AND \(match)"),[id]+countArgs).first?["n"] as? Int ?? 0
             var group:[String:Any]=["project":try self.project(id),"items":try deliverableRows(projectID:id,q:q,limit:4),"total":count]
-            group.merge(try latestDelivery(id)){_,new in new};return group
+            group.merge(try latestDelivery(id,q:q)){_,new in new};return group
         }
-        return ["groups":groups,"total_projects":totalProjects,"total":total,"limit":limit,"offset":offset]
+        return ["groups":groups,"total_projects":totalProjects,"total":total,"limit":limit,"offset":offset,"search_excludes_markdown":!q.isEmpty]
     }
 
     func selectDeliverables(_ p:[String:Any],evidenceSource:String="user",displayNames:[String:String]=[:],sourcePaths:[String:String]=[:],deliveredAt:String?=nil,timeSource:String="task_delivery") throws -> [String:Any] {

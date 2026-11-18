@@ -197,7 +197,9 @@ final class Store {
     }
     private func listFiles(_ p:[String:Any]) throws -> [String:Any] {
         var whereSQL=["f.status=?"]; var args:[Any?]=[(p["status"] as? String) ?? "managed"]
-        if let q=p["q"] as? String,!q.isEmpty {
+        let q=String((p["q"] as? String ?? "").trimmingCharacters(in:.whitespacesAndNewlines).prefix(1000))
+        if !q.isEmpty {
+            whereSQL.append(nonMarkdownFileSearchSQL)
             whereSQL.append("(f.name LIKE ? ESCAPE '\\' OR f.tags LIKE ? ESCAPE '\\' OR EXISTS(SELECT 1 FROM file_projects r JOIN projects p ON p.id=r.project_id WHERE r.file_id=f.id AND (p.title LIKE ? ESCAPE '\\' OR p.original_title LIKE ? ESCAPE '\\'))) ")
             let escaped=q.replacingOccurrences(of:"\\",with:"\\\\").replacingOccurrences(of:"%",with:"\\%").replacingOccurrences(of:"_",with:"\\_"); let pattern="%\(escaped)%"; args += [pattern,pattern,pattern,pattern]
         }
@@ -218,7 +220,7 @@ final class Store {
             var f=try file(row["id"] as! String)
             if let projectID=p["project_id"] as? String,!projectID.isEmpty { f["final"]=try db.query("SELECT 1 FROM project_deliverables WHERE file_id=? AND project_id=? LIMIT 1",[f["id"],projectID]).isEmpty ? 0 : 1 }
             return f
-        },"total":count]
+        },"total":count,"search_excludes_markdown":!q.isEmpty]
     }
     private func saveProject(_ p:[String:Any]) throws -> [String:Any] { try db.transaction { try saveProjectImpl(p) } }
     private func saveProjectImpl(_ p:[String:Any]) throws -> [String:Any] {
@@ -342,7 +344,7 @@ final class Store {
     private func status() throws -> [String:Any] {
         let available=fm.fileExists(atPath:root.appendingPathComponent("workvault.sqlite").path) && fm.fileExists(atPath:root.appendingPathComponent("blobs").path)
         let free=(try? fm.attributesOfFileSystem(forPath:root.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
-        return ["version":"1.2.1","root":root.path,"setup_complete":setting("setup_complete",false) ?? false,"projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=1").first?["n"] ?? 0,"pending_projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=0").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files WHERE status='managed'").first?["n"] ?? 0,"inbox":try db.query("SELECT count(*) n FROM files WHERE status='pending'").first?["n"] ?? 0,"bytes":try db.query("SELECT coalesce(sum(size),0) n FROM blobs").first?["n"] ?? 0,"free_bytes":free,"recent_files":try listFiles(["limit":8])["items"] ?? [],"formats":try db.query("SELECT ext,count(*) count FROM files WHERE status='managed' GROUP BY ext ORDER BY count DESC"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 8"),"storage_available":available]
+        return ["version":"1.2.2","root":root.path,"setup_complete":setting("setup_complete",false) ?? false,"projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=1").first?["n"] ?? 0,"pending_projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=0").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files WHERE status='managed'").first?["n"] ?? 0,"inbox":try db.query("SELECT count(*) n FROM files WHERE status='pending'").first?["n"] ?? 0,"bytes":try db.query("SELECT coalesce(sum(size),0) n FROM blobs").first?["n"] ?? 0,"free_bytes":free,"recent_files":try listFiles(["limit":8])["items"] ?? [],"formats":try db.query("SELECT ext,count(*) count FROM files WHERE status='managed' GROUP BY ext ORDER BY count DESC"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 8"),"storage_available":available]
     }
     private func updateFiles(_ p:[String:Any]) throws -> [String:Any] {
         let ids=p["ids"] as? [String] ?? []; guard !ids.isEmpty,ids.count<=1000 else { throw fail("请选择 1–1000 个文件") }
@@ -688,7 +690,7 @@ final class Store {
             for url in try expand([temp.path]) where !url.lastPathComponent.hasSuffix("-wal") && !url.lastPathComponent.hasSuffix("-shm") {
                 let relative=String(url.path.dropFirst(temp.path.count+1)); manifest.append(["path":relative,"sha256":try Store.hashFile(url),"size":try regularFile(url)])
             }
-            let doc:[String:Any]=["format":"workvault-backup","version":1,"schema":5,"app_version":"1.2.1","created_at":now(),"include_index":includeIndex,"projects":try db.query("SELECT count(*) n FROM projects").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files").first?["n"] ?? 0,"manifest":manifest]
+            let doc:[String:Any]=["format":"workvault-backup","version":1,"schema":5,"app_version":"1.2.2","created_at":now(),"include_index":includeIndex,"projects":try db.query("SELECT count(*) n FROM projects").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files").first?["n"] ?? 0,"manifest":manifest]
             try JSONSerialization.data(withJSONObject:doc,options:[.prettyPrinted,.sortedKeys]).write(to:temp.appendingPathComponent("manifest.json"),options:.atomic)
             let check=try inspectBackup(path:temp.path); guard check["valid"] as? Bool == true else { throw fail("备份校验失败：\(check["errors"] ?? "")") }
             try fm.moveItem(at:temp,to:target); try db.exec("INSERT INTO backups VALUES(?,?,?,?)",[uuid(),target.path,now(),manifest.count]); try log("success","手动备份已完成并校验：\(target.lastPathComponent)")
