@@ -299,7 +299,11 @@ final class Store {
         case "preview": return try preview(fileID:try required(p,"id"),versionID:p["version_id"] as? String)
         case "open_file": return try openFile(id:try required(p,"id"),version:p["version_id"] as? String)
         case "reveal_file":
-            let url=try blobURL(fileID:try required(p,"id")); DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([url]) }; return ["ok":true]
+            let id=try required(p,"id"),version=p["version_id"] as? String
+            let url=try version.map { try readOnlyVersionCopy(fileID:id,versionID:$0,name:p["name"] as? String) } ?? blobURL(fileID:id)
+            DispatchQueue.main.async { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            let resolvedVersion=try version ?? (file(id)["current_version"] as? String ?? "")
+            return ["ok":true,"path":url.path,"read_only":true,"version_id":resolvedVersion]
         case "export_file": return try exportFile(p)
         case "check_edits": return try checkEdits()
         case "commit_edit":
@@ -338,7 +342,7 @@ final class Store {
     private func status() throws -> [String:Any] {
         let available=fm.fileExists(atPath:root.appendingPathComponent("workvault.sqlite").path) && fm.fileExists(atPath:root.appendingPathComponent("blobs").path)
         let free=(try? fm.attributesOfFileSystem(forPath:root.path)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
-        return ["version":"1.2.0","root":root.path,"setup_complete":setting("setup_complete",false) ?? false,"projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=1").first?["n"] ?? 0,"pending_projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=0").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files WHERE status='managed'").first?["n"] ?? 0,"inbox":try db.query("SELECT count(*) n FROM files WHERE status='pending'").first?["n"] ?? 0,"bytes":try db.query("SELECT coalesce(sum(size),0) n FROM blobs").first?["n"] ?? 0,"free_bytes":free,"recent_files":try listFiles(["limit":8])["items"] ?? [],"formats":try db.query("SELECT ext,count(*) count FROM files WHERE status='managed' GROUP BY ext ORDER BY count DESC"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 8"),"storage_available":available]
+        return ["version":"1.2.1","root":root.path,"setup_complete":setting("setup_complete",false) ?? false,"projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=1").first?["n"] ?? 0,"pending_projects":try db.query("SELECT count(*) n FROM projects WHERE source_confirmed=0").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files WHERE status='managed'").first?["n"] ?? 0,"inbox":try db.query("SELECT count(*) n FROM files WHERE status='pending'").first?["n"] ?? 0,"bytes":try db.query("SELECT coalesce(sum(size),0) n FROM blobs").first?["n"] ?? 0,"free_bytes":free,"recent_files":try listFiles(["limit":8])["items"] ?? [],"formats":try db.query("SELECT ext,count(*) count FROM files WHERE status='managed' GROUP BY ext ORDER BY count DESC"),"logs":try db.query("SELECT * FROM sync_logs ORDER BY created_at DESC,rowid DESC LIMIT 8"),"storage_available":available]
     }
     private func updateFiles(_ p:[String:Any]) throws -> [String:Any] {
         let ids=p["ids"] as? [String] ?? []; guard !ids.isEmpty,ids.count<=1000 else { throw fail("请选择 1–1000 个文件") }
@@ -443,10 +447,37 @@ final class Store {
     private func workingPath(_ id:String,create:Bool=true) throws -> URL {
         let f=try file(id); let directory=root.appendingPathComponent("working/\(id)"); if create { try fm.createDirectory(at:directory,withIntermediateDirectories:true) }; if let existing=try? fm.contentsOfDirectory(at:directory,includingPropertiesForKeys:[.isRegularFileKey]).first(where:{ (try? $0.resourceValues(forKeys:[.isRegularFileKey]).isRegularFile) == true }) { return existing }; return directory.appendingPathComponent(safeName(f["name"] as? String ?? "file"))
     }
+    func readOnlyVersionCopy(fileID:String,versionID:String,name:String?=nil) throws -> URL {
+        let source=try blobURL(fileID:fileID,versionID:versionID),f=try file(fileID)
+        guard versionID.count<=128,!versionID.isEmpty,versionID.allSatisfy({$0.isLetter || $0.isNumber || $0 == "-"}) else { throw fail("版本标识无效") }
+        guard let expected=try db.query("SELECT hash FROM versions WHERE id=? AND file_id=?",[versionID,fileID]).first?["hash"] as? String else { throw fail("版本不存在") }
+        let parent=root.appendingPathComponent("previews"),directory=parent.appendingPathComponent(versionID)
+        let parentInfo=try parent.resourceValues(forKeys:[.isSymbolicLinkKey,.isDirectoryKey])
+        guard parentInfo.isSymbolicLink != true,parentInfo.isDirectory == true else { throw fail("预览缓存目录不可用") }
+        if !fm.fileExists(atPath:directory.path) { try fm.createDirectory(at:directory,withIntermediateDirectories:false) }
+        let directoryInfo=try directory.resourceValues(forKeys:[.isSymbolicLinkKey,.isDirectoryKey])
+        guard directoryInfo.isSymbolicLink != true,directoryInfo.isDirectory == true else { throw fail("不接受符号链接预览目录") }
+        let destination=directory.appendingPathComponent(safeName(name ?? f["name"] as? String ?? "file"))
+        let info=try? destination.resourceValues(forKeys:[.isSymbolicLinkKey])
+        guard info?.isSymbolicLink != true else { throw fail("不接受符号链接预览文件") }
+        if fm.fileExists(atPath:destination.path) {
+            _=try regularFile(destination)
+            if try Store.hashFile(destination)==expected { try fm.setAttributes([.posixPermissions:0o400],ofItemAtPath:destination.path);return destination }
+        }
+        // This disposable, named copy is shared by pinned Open and Finder reveal.
+        // Always verify it; a user-modified cache must never replace the archive.
+        let temporary=directory.appendingPathComponent(".\(uuid()).partial")
+        defer { try? fm.removeItem(at:temporary) }
+        try fm.copyItem(at:source,to:temporary)
+        guard try Store.hashFile(temporary)==expected else { throw fail("只读版本副本校验失败") }
+        try fm.setAttributes([.posixPermissions:0o400],ofItemAtPath:temporary.path)
+        guard Darwin.rename(temporary.path,destination.path)==0 else { throw fail("无法原子写入只读版本副本") }
+        return destination
+    }
     private func openFile(id:String,version:String?) throws -> [String:Any] {
-        let f=try file(id); let original=try blobURL(fileID:id,versionID:version)
+        let original=try blobURL(fileID:id,versionID:version)
         let path:URL
-        if let version=version { let dir=root.appendingPathComponent("previews/\(version)"); try fm.createDirectory(at:dir,withIntermediateDirectories:true); path=dir.appendingPathComponent(safeName(f["name"] as? String ?? "file")); if !fm.fileExists(atPath:path.path) { try fm.copyItem(at:original,to:path) }; try? fm.setAttributes([.posixPermissions:0o400],ofItemAtPath:path.path) }
+        if let version=version { path=try readOnlyVersionCopy(fileID:id,versionID:version) }
         else { path=try workingPath(id); if !fm.fileExists(atPath:path.path) { try fm.copyItem(at:original,to:path); try? fm.setAttributes([.posixPermissions:0o600],ofItemAtPath:path.path) } }
         DispatchQueue.main.async { NSWorkspace.shared.open(path) }
         return ["path":path.path,"editable":version == nil,"note":version == nil ? "已打开受管理工作副本。编辑完成后检查并登记新版本。" : "历史版本只读副本"]
@@ -657,7 +688,7 @@ final class Store {
             for url in try expand([temp.path]) where !url.lastPathComponent.hasSuffix("-wal") && !url.lastPathComponent.hasSuffix("-shm") {
                 let relative=String(url.path.dropFirst(temp.path.count+1)); manifest.append(["path":relative,"sha256":try Store.hashFile(url),"size":try regularFile(url)])
             }
-            let doc:[String:Any]=["format":"workvault-backup","version":1,"schema":5,"app_version":"1.2.0","created_at":now(),"include_index":includeIndex,"projects":try db.query("SELECT count(*) n FROM projects").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files").first?["n"] ?? 0,"manifest":manifest]
+            let doc:[String:Any]=["format":"workvault-backup","version":1,"schema":5,"app_version":"1.2.1","created_at":now(),"include_index":includeIndex,"projects":try db.query("SELECT count(*) n FROM projects").first?["n"] ?? 0,"files":try db.query("SELECT count(*) n FROM files").first?["n"] ?? 0,"manifest":manifest]
             try JSONSerialization.data(withJSONObject:doc,options:[.prettyPrinted,.sortedKeys]).write(to:temp.appendingPathComponent("manifest.json"),options:.atomic)
             let check=try inspectBackup(path:temp.path); guard check["valid"] as? Bool == true else { throw fail("备份校验失败：\(check["errors"] ?? "")") }
             try fm.moveItem(at:temp,to:target); try db.exec("INSERT INTO backups VALUES(?,?,?,?)",[uuid(),target.path,now(),manifest.count]); try log("success","手动备份已完成并校验：\(target.lastPathComponent)")
